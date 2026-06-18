@@ -249,8 +249,67 @@ button.ghost:hover {
   margin-top: 6px;
 }
 
+/* Drive-style search bar */
+.search {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.search .search-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  border: none;
+  background: transparent;
+  padding: 11px 0;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.search .search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-clear {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 50%;
+}
+
+.search-clear:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
 .file-list {
-  margin-top: 28px;
+  margin-top: 14px;
   display: flex;
   flex-direction: column;
   background: var(--panel);

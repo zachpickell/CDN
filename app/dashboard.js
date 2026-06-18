@@ -199,6 +199,7 @@ function ErrorModal({ message, onClose }) {
 export default function Dashboard({ initialFiles }) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
+  const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   // null when idle, otherwise { name, percent, index, total }
@@ -388,6 +389,11 @@ export default function Dashboard({ initialFiles }) {
     router.refresh();
   }
 
+  const q = query.trim().toLowerCase();
+  const visibleFiles = q
+    ? files.filter((f) => f.name.toLowerCase().includes(q))
+    : files;
+
   return (
     <div className="container">
       <div className="topbar">
@@ -465,11 +471,52 @@ export default function Dashboard({ initialFiles }) {
 
       {error && <ErrorModal message={error} onClose={() => setError("")} />}
 
+      {files.length > 0 && (
+        <div className="search">
+          <svg
+            className="search-icon"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            aria-hidden="true"
+          >
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35"
+            />
+          </svg>
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search files"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search files"
+          />
+          {query && (
+            <button
+              className="search-clear"
+              onClick={() => setQuery("")}
+              title="Clear"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="file-list">
         {files.length === 0 ? (
           <div className="empty">No files yet. Upload something to get a share link.</div>
+        ) : visibleFiles.length === 0 ? (
+          <div className="empty">No files match “{query}”.</div>
         ) : (
-          files.map((f) => (
+          visibleFiles.map((f) => (
             <FileRow key={f.token} file={f} onDelete={onDelete} />
           ))
         )}
