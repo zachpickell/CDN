@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listFiles, deleteFile } from "@/lib/store";
+import { listFiles, deleteFile, moveFile } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -14,9 +14,43 @@ export async function GET() {
       token: f.token,
       name: f.originalName,
       size: f.size,
+      folderId: f.folderId ?? null,
       uploadedAt: f.uploadedAt,
     })),
   });
+}
+
+// Move a file into a folder (or to the root). Body: { token, folderId }
+export async function PATCH(request) {
+  if (!(await isAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  if (!body?.token) {
+    return NextResponse.json({ error: "Missing token" }, { status: 400 });
+  }
+  try {
+    const entry = await moveFile(body.token, body.folderId ?? null);
+    if (!entry) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({
+      file: {
+        token: entry.token,
+        name: entry.originalName,
+        size: entry.size,
+        folderId: entry.folderId ?? null,
+        uploadedAt: entry.uploadedAt,
+      },
+    });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
 }
 
 export async function DELETE(request) {

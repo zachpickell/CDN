@@ -29,8 +29,15 @@ export async function POST(request) {
       const originalName = rawName ? decodeURIComponent(rawName) : "file";
       const mime =
         request.headers.get("x-filetype") || "application/octet-stream";
+      const folderHeader = request.headers.get("x-folder-id");
+      const folderId = folderHeader ? decodeURIComponent(folderHeader) : null;
 
-      const entry = await finalizeUpload({ uploadId, originalName, mime });
+      const entry = await finalizeUpload({
+        uploadId,
+        originalName,
+        mime,
+        folderId,
+      });
       if (entry.size === 0) {
         return NextResponse.json({ error: "File is empty" }, { status: 400 });
       }
@@ -38,6 +45,7 @@ export async function POST(request) {
         token: entry.token,
         name: entry.originalName,
         size: entry.size,
+        folderId: entry.folderId ?? null,
         uploadedAt: entry.uploadedAt,
       });
     }

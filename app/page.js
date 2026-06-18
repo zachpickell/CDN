@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { listFiles } from "@/lib/store";
+import { listAll } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 import Dashboard from "./dashboard";
 
@@ -13,12 +13,21 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const files = await listFiles();
-  const initial = files.map((f) => ({
+  const { files, folders } = await listAll();
+  const initialFiles = files.map((f) => ({
     token: f.token,
     name: f.originalName,
     size: f.size,
+    folderId: f.folderId ?? null,
     uploadedAt: f.uploadedAt,
   }));
-  return <Dashboard initialFiles={initial} />;
+  const initialFolders = folders.map((f) => ({
+    id: f.id,
+    name: f.name,
+    parentId: f.parentId,
+    createdAt: f.createdAt,
+  }));
+  return (
+    <Dashboard initialFiles={initialFiles} initialFolders={initialFolders} />
+  );
 }

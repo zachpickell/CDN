@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 function formatSize(bytes) {
@@ -76,7 +76,99 @@ function FileIcon({ file }) {
   );
 }
 
-function FileRow({ file, onDelete }) {
+function FolderIcon() {
+  return (
+    <div className="file-icon kind-folder" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20">
+        <path
+          fill="currentColor"
+          d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function MoveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v2M3 7h18M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9M12 11v6m0 0 2.5-2.5M12 17l-2.5-2.5"
+      />
+    </svg>
+  );
+}
+
+function FolderRow({ folder, count, onOpen, onRename, onMove, onDelete }) {
+  return (
+    <div className="file-row folder-row">
+      <button
+        className="folder-open"
+        onClick={() => onOpen(folder.id)}
+        title={`Open ${folder.name}`}
+      >
+        <FolderIcon />
+        <div className="file-meta">
+          <div className="file-name">{folder.name}</div>
+          <div className="file-sub">
+            {count === 1 ? "1 item" : `${count} items`}
+          </div>
+        </div>
+      </button>
+      <div className="row-actions">
+        <button
+          className="icon-btn"
+          onClick={() => onRename(folder)}
+          title="Rename"
+          aria-label="Rename folder"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
+            />
+          </svg>
+        </button>
+        <button
+          className="icon-btn"
+          onClick={() => onMove({ type: "folder", id: folder.id, name: folder.name })}
+          title="Move"
+          aria-label="Move folder"
+        >
+          <MoveIcon />
+        </button>
+        <button
+          className="icon-btn danger"
+          onClick={() => onDelete(folder)}
+          title="Delete"
+          aria-label="Delete folder"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FileRow({ file, onMove, onDelete }) {
   const [copied, setCopied] = useState(false);
 
   const shareUrl =
@@ -132,6 +224,14 @@ function FileRow({ file, onDelete }) {
             </svg>
           )}
         </button>
+        <button
+          className="icon-btn"
+          onClick={() => onMove({ type: "file", id: file.token, name: file.name })}
+          title="Move"
+          aria-label="Move file"
+        >
+          <MoveIcon />
+        </button>
         <a
           className="icon-btn"
           href={shareUrl}
@@ -164,7 +264,7 @@ function FileRow({ file, onDelete }) {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
+              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
             />
           </svg>
         </button>
@@ -186,7 +286,7 @@ function ErrorModal({ message, onClose }) {
           ×
         </button>
         <div className="modal-icon">!</div>
-        <h2 className="modal-title">Upload failed</h2>
+        <h2 className="modal-title">Something went wrong</h2>
         <p className="modal-message">{message}</p>
         <button className="modal-ok" onClick={onClose}>
           Dismiss
@@ -196,18 +296,116 @@ function ErrorModal({ message, onClose }) {
   );
 }
 
-export default function Dashboard({ initialFiles }) {
+// Picker that lists every folder as an indented tree so the user can choose a
+// destination. `disabledIds` blocks moving a folder into itself/its subtree.
+function MoveModal({ target, folders, onClose, onChoose }) {
+  // Build depth for each folder by walking parents.
+  const byId = useMemo(() => {
+    const m = new Map();
+    for (const f of folders) m.set(f.id, f);
+    return m;
+  }, [folders]);
+
+  const disabledIds = useMemo(() => {
+    if (target.type !== "folder") return new Set();
+    const out = new Set([target.id]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const f of folders) {
+        if (f.parentId && out.has(f.parentId) && !out.has(f.id)) {
+          out.add(f.id);
+          added = true;
+        }
+      }
+    }
+    return out;
+  }, [folders, target]);
+
+  function depth(id) {
+    let d = 0;
+    let cur = byId.get(id);
+    while (cur && cur.parentId) {
+      d++;
+      cur = byId.get(cur.parentId);
+    }
+    return d;
+  }
+
+  // Stable, parent-before-child ordering.
+  const ordered = useMemo(() => {
+    const out = [];
+    const visit = (parentId) => {
+      folders
+        .filter((f) => f.parentId === parentId)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((f) => {
+          out.push(f);
+          visit(f.id);
+        });
+    };
+    visit(null);
+    return out;
+  }, [folders]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal move-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="modal-close" aria-label="Close" onClick={onClose}>
+          ×
+        </button>
+        <h2 className="modal-title">Move “{target.name}”</h2>
+        <p className="modal-message">Choose a destination folder.</p>
+        <div className="move-list">
+          <button className="move-item" onClick={() => onChoose(null)}>
+            <FolderIcon />
+            <span>Home (root)</span>
+          </button>
+          {ordered.map((f) => (
+            <button
+              key={f.id}
+              className="move-item"
+              disabled={disabledIds.has(f.id)}
+              style={{ paddingLeft: `${14 + depth(f.id) * 18}px` }}
+              onClick={() => onChoose(f.id)}
+            >
+              <FolderIcon />
+              <span>{f.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard({ initialFiles, initialFolders }) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
+  const [folders, setFolders] = useState(initialFolders || []);
+  const [currentFolderId, setCurrentFolderId] = useState(null);
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [moveTarget, setMoveTarget] = useState(null);
   // null when idle, otherwise { name, percent, index, total }
   const [progress, setProgress] = useState(null);
   const inputRef = useRef(null);
   const xhrRef = useRef(null);
   const cancelledRef = useRef(false);
   const uploadIdRef = useRef(null);
+  // Mirror the active folder so async upload code reads the latest value.
+  const folderRef = useRef(null);
+  useEffect(() => {
+    folderRef.current = currentFolderId;
+  }, [currentFolderId]);
 
   const uploading = progress !== null;
 
@@ -303,17 +501,18 @@ export default function Dashboard({ initialFiles }) {
       }
     }
 
-    // All bytes sent — finalize and get the file metadata.
-    const entry = await sendChunk(
-      null,
-      {
-        "X-Upload-Id": uploadId,
-        "X-Finalize": "1",
-        "X-Filename": encodeURIComponent(file.name),
-        "X-Filetype": file.type || "application/octet-stream",
-      },
-      null
-    );
+    // All bytes sent — finalize and get the file metadata. The file lands in
+    // whatever folder is open when the upload finishes.
+    const finalizeHeaders = {
+      "X-Upload-Id": uploadId,
+      "X-Finalize": "1",
+      "X-Filename": encodeURIComponent(file.name),
+      "X-Filetype": file.type || "application/octet-stream",
+    };
+    if (folderRef.current) {
+      finalizeHeaders["X-Folder-Id"] = encodeURIComponent(folderRef.current);
+    }
+    const entry = await sendChunk(null, finalizeHeaders, null);
     onProgress({ percent: 100, speed: 0, eta: 0 });
     uploadIdRef.current = null;
     return entry;
@@ -376,11 +575,134 @@ export default function Dashboard({ initialFiles }) {
     if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files);
   }
 
-  async function onDelete(token) {
+  async function onDeleteFile(token) {
     setFiles((prev) => prev.filter((f) => f.token !== token));
     await fetch(`/api/files?token=${encodeURIComponent(token)}`, {
       method: "DELETE",
     });
+  }
+
+  async function createNewFolder() {
+    const name = newName.trim();
+    if (!name) {
+      setCreating(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, parentId: currentFolderId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't create folder");
+      setFolders((prev) => [...prev, data.folder]);
+      setNewName("");
+      setCreating(false);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function renameFolder(folder) {
+    const name = window.prompt("Rename folder", folder.name);
+    if (name == null) return;
+    const clean = name.trim();
+    if (!clean || clean === folder.name) return;
+    try {
+      const res = await fetch("/api/folders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: folder.id, name: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't rename folder");
+      setFolders((prev) =>
+        prev.map((f) => (f.id === folder.id ? data.folder : f))
+      );
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function deleteFolder(folder) {
+    const childFolders = folders.filter((f) => f.parentId === folder.id).length;
+    const childFiles = files.filter((f) => f.folderId === folder.id).length;
+    const note =
+      childFolders + childFiles > 0
+        ? " and everything inside it"
+        : "";
+    if (
+      !window.confirm(
+        `Delete “${folder.name}”${note}? This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/folders?id=${encodeURIComponent(folder.id)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't delete folder");
+      }
+      // Drop the folder, its descendants, and any files they held from view.
+      const removed = new Set([folder.id]);
+      let added = true;
+      while (added) {
+        added = false;
+        for (const f of folders) {
+          if (f.parentId && removed.has(f.parentId) && !removed.has(f.id)) {
+            removed.add(f.id);
+            added = true;
+          }
+        }
+      }
+      setFolders((prev) => prev.filter((f) => !removed.has(f.id)));
+      setFiles((prev) => prev.filter((f) => !removed.has(f.folderId)));
+      if (removed.has(currentFolderId)) setCurrentFolderId(folder.parentId);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function doMove(destFolderId) {
+    const target = moveTarget;
+    setMoveTarget(null);
+    if (!target) return;
+    try {
+      if (target.type === "file") {
+        const res = await fetch("/api/files", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: target.id, folderId: destFolderId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Couldn't move file");
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.token === target.id ? { ...f, folderId: destFolderId } : f
+          )
+        );
+      } else {
+        const res = await fetch("/api/folders", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: target.id, parentId: destFolderId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Couldn't move folder");
+        setFolders((prev) =>
+          prev.map((f) =>
+            f.id === target.id ? { ...f, parentId: destFolderId } : f
+          )
+        );
+      }
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function logout() {
@@ -389,10 +711,41 @@ export default function Dashboard({ initialFiles }) {
     router.refresh();
   }
 
+  // Breadcrumb trail from root to the current folder.
+  const trail = useMemo(() => {
+    const out = [];
+    const byId = new Map(folders.map((f) => [f.id, f]));
+    let cur = currentFolderId ? byId.get(currentFolderId) : null;
+    while (cur) {
+      out.unshift(cur);
+      cur = cur.parentId ? byId.get(cur.parentId) : null;
+    }
+    return out;
+  }, [folders, currentFolderId]);
+
   const q = query.trim().toLowerCase();
-  const visibleFiles = q
+  const searching = q.length > 0;
+
+  // Number of immediate children a folder holds, for its subtitle.
+  function childCount(folderId) {
+    return (
+      folders.filter((f) => f.parentId === folderId).length +
+      files.filter((f) => f.folderId === folderId).length
+    );
+  }
+
+  const visibleFolders = searching
+    ? []
+    : folders
+        .filter((f) => f.parentId === currentFolderId)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+  const visibleFiles = searching
     ? files.filter((f) => f.name.toLowerCase().includes(q))
-    : files;
+    : files.filter((f) => f.folderId === currentFolderId);
+
+  const isEmptyHere = visibleFolders.length === 0 && visibleFiles.length === 0;
+  const hasAnything = files.length > 0 || folders.length > 0;
 
   return (
     <div className="container">
@@ -453,7 +806,9 @@ export default function Dashboard({ initialFiles }) {
               <strong>Drop files here</strong> or click to choose
             </div>
             <div className="hint">
-              Each file gets a private link only people you share it with can use.
+              {currentFolderId
+                ? `Uploads land in “${trail[trail.length - 1]?.name}”.`
+                : "Each file gets a private link only people you share it with can use."}
             </div>
           </>
         )}
@@ -471,7 +826,16 @@ export default function Dashboard({ initialFiles }) {
 
       {error && <ErrorModal message={error} onClose={() => setError("")} />}
 
-      {files.length > 0 && (
+      {moveTarget && (
+        <MoveModal
+          target={moveTarget}
+          folders={folders}
+          onClose={() => setMoveTarget(null)}
+          onChoose={doMove}
+        />
+      )}
+
+      {hasAnything && (
         <div className="search">
           <svg
             className="search-icon"
@@ -492,7 +856,7 @@ export default function Dashboard({ initialFiles }) {
           <input
             type="text"
             className="search-input"
-            placeholder="Search files"
+            placeholder="Search all files"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search files"
@@ -510,15 +874,92 @@ export default function Dashboard({ initialFiles }) {
         </div>
       )}
 
+      {!searching && (
+        <div className="folder-bar">
+          <nav className="breadcrumbs" aria-label="Folder path">
+            <button
+              className="crumb"
+              onClick={() => setCurrentFolderId(null)}
+              disabled={currentFolderId === null}
+            >
+              Home
+            </button>
+            {trail.map((f) => (
+              <span key={f.id} className="crumb-wrap">
+                <span className="crumb-sep">/</span>
+                <button
+                  className="crumb"
+                  onClick={() => setCurrentFolderId(f.id)}
+                  disabled={f.id === currentFolderId}
+                >
+                  {f.name}
+                </button>
+              </span>
+            ))}
+          </nav>
+          {creating ? (
+            <form
+              className="new-folder"
+              onSubmit={(e) => {
+                e.preventDefault();
+                createNewFolder();
+              }}
+            >
+              <input
+                autoFocus
+                className="new-folder-input"
+                placeholder="Folder name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onBlur={createNewFolder}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setNewName("");
+                    setCreating(false);
+                  }
+                }}
+              />
+            </form>
+          ) : (
+            <button className="ghost new-folder-btn" onClick={() => setCreating(true)}>
+              + New folder
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="file-list">
-        {files.length === 0 ? (
-          <div className="empty">No files yet. Upload something to get a share link.</div>
-        ) : visibleFiles.length === 0 ? (
-          <div className="empty">No files match “{query}”.</div>
+        {searching ? (
+          visibleFiles.length === 0 ? (
+            <div className="empty">No files match “{query}”.</div>
+          ) : (
+            visibleFiles.map((f) => (
+              <FileRow key={f.token} file={f} onMove={setMoveTarget} onDelete={onDeleteFile} />
+            ))
+          )
+        ) : isEmptyHere ? (
+          <div className="empty">
+            {currentFolderId
+              ? "This folder is empty. Upload files or create a folder."
+              : "No files yet. Upload something or create a folder."}
+          </div>
         ) : (
-          visibleFiles.map((f) => (
-            <FileRow key={f.token} file={f} onDelete={onDelete} />
-          ))
+          <>
+            {visibleFolders.map((f) => (
+              <FolderRow
+                key={f.id}
+                folder={f}
+                count={childCount(f.id)}
+                onOpen={setCurrentFolderId}
+                onRename={renameFolder}
+                onMove={setMoveTarget}
+                onDelete={deleteFolder}
+              />
+            ))}
+            {visibleFiles.map((f) => (
+              <FileRow key={f.token} file={f} onMove={setMoveTarget} onDelete={onDeleteFile} />
+            ))}
+          </>
         )}
       </div>
     </div>

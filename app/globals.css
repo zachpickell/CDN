@@ -551,3 +551,157 @@ button.ghost:hover {
   letter-spacing: 0.04em;
   margin: 0 0 12px;
 }
+
+/* --- Folders --------------------------------------------------------------- */
+
+.file-icon.kind-folder {
+  background: #d9a23a;
+  color: #fff;
+}
+
+/* Toolbar above the listing: breadcrumb trail + New folder button */
+.folder-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+}
+
+.crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.crumb {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.crumb:disabled {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+
+.crumb-sep {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.new-folder-btn {
+  flex-shrink: 0;
+}
+
+.new-folder {
+  margin: 0;
+}
+
+.new-folder-input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 8px 12px;
+  outline: none;
+  min-width: 200px;
+}
+
+.new-folder-input:focus {
+  border-color: var(--accent);
+}
+
+/* Folder rows reuse .file-row but the whole left area is a navigation button */
+.folder-row .folder-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.folder-row .folder-open .file-name {
+  color: var(--text);
+}
+
+/* Move-to picker */
+.move-modal {
+  text-align: left;
+  max-width: 420px;
+  width: 100%;
+}
+
+.move-modal .modal-title,
+.move-modal .modal-message {
+  text-align: left;
+}
+
+.move-list {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.move-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.move-item:last-child {
+  border-bottom: none;
+}
+
+.move-item:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.move-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.move-item .file-icon {
+  width: 28px;
+  height: 28px;
+}
