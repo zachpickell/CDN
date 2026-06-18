@@ -82,6 +82,29 @@ function FileRow({ file, onDelete }) {
   );
 }
 
+function ErrorModal({ message, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal"
+        role="alertdialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="modal-close" aria-label="Close" onClick={onClose}>
+          ×
+        </button>
+        <div className="modal-icon">!</div>
+        <h2 className="modal-title">Upload failed</h2>
+        <p className="modal-message">{message}</p>
+        <button className="modal-ok" onClick={onClose}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ initialFiles }) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
@@ -139,7 +162,15 @@ export default function Dashboard({ initialFiles }) {
           reject(new Error(msg));
         }
       };
-      xhr.onerror = () => reject(new Error(`Failed to upload ${file.name}`));
+      xhr.onerror = () =>
+        reject(
+          new Error(
+            `Couldn't reach the server while uploading “${file.name}”. ` +
+              `The request was blocked before it arrived — this is usually a ` +
+              `stale service worker or a network issue. Try an incognito window, ` +
+              `or unregister service workers in DevTools → Application.`
+          )
+        );
       xhr.send(file);
     });
   }
@@ -281,7 +312,7 @@ export default function Dashboard({ initialFiles }) {
         />
       </div>
 
-      {error && <div className="error">{error}</div>}
+      {error && <ErrorModal message={error} onClose={() => setError("")} />}
 
       <div className="file-list">
         {files.length === 0 ? (
