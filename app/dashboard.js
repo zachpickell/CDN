@@ -115,47 +115,34 @@ export default function Dashboard({ initialFiles }) {
   const inputRef = useRef(null);
   const xhrRef = useRef(null);
   const cancelledRef = useRef(false);
+  const uploadIdRef = useRef(null);
 
   const uploading = progress !== null;
 
-  // Upload a single file via XHR so we get upload progress events
-  // (fetch can't report upload progress).
-  function uploadOne(file, onProgress) {
+  const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per request
+
+  // Send one chunk (a Blob) as a small POST. Resolves with the server's JSON.
+  function sendChunk(chunk, headers, onChunkProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
       xhr.open("POST", "/api/upload");
-      // Send the raw file as the body so the server can stream it to disk
-      // instead of buffering the whole thing in memory.
-      xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
-      xhr.setRequestHeader(
-        "X-Filetype",
-        file.type || "application/octet-stream"
-      );
-
-      const startedAt = Date.now();
+      for (const [k, v] of Object.entries(headers)) {
+        xhr.setRequestHeader(k, v);
+      }
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const elapsed = (Date.now() - startedAt) / 1000;
-          const speed = elapsed > 0 ? e.loaded / elapsed : 0; // bytes/sec
-          const eta = speed > 0 ? (e.total - e.loaded) / speed : null;
-          onProgress({
-            percent: Math.round((e.loaded / e.total) * 100),
-            speed,
-            eta,
-          });
-        }
+        if (e.lengthComputable) onChunkProgress(e.loaded);
       };
       xhr.onabort = () => reject(new Error("__cancelled__"));
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            resolve(JSON.parse(xhr.responseText));
+            resolve(xhr.responseText ? JSON.parse(xhr.responseText) : {});
           } catch {
             reject(new Error("Bad server response"));
           }
         } else {
-          let msg = `Failed to upload ${file.name}`;
+          let msg = "Upload failed";
           try {
             msg = JSON.parse(xhr.responseText).error || msg;
           } catch {}
@@ -165,14 +152,55 @@ export default function Dashboard({ initialFiles }) {
       xhr.onerror = () =>
         reject(
           new Error(
-            `Couldn't reach the server while uploading “${file.name}”. ` +
-              `The request was blocked before it arrived — this is usually a ` +
-              `stale service worker or a network issue. Try an incognito window, ` +
-              `or unregister service workers in DevTools → Application.`
+            "Couldn't reach the server. The request was blocked before it " +
+              "arrived — usually a stale service worker or a network issue. " +
+              "Try an incognito window, or unregister service workers in " +
+              "DevTools → Application."
           )
         );
-      xhr.send(file);
+      xhr.send(chunk);
     });
+  }
+
+  // Upload a single file by slicing it into chunks. Each chunk is a normal
+  // small request, which avoids Next.js request-body streaming limits entirely.
+  async function uploadOne(file, onProgress) {
+    const uploadId =
+      (crypto.randomUUID && crypto.randomUUID()) ||
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    uploadIdRef.current = uploadId;
+
+    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+    const startedAt = Date.now();
+    let result = {};
+
+    for (let i = 0; i < totalChunks; i++) {
+      if (cancelledRef.current) throw new Error("__cancelled__");
+      const start = i * CHUNK_SIZE;
+      const chunk = file.slice(start, Math.min(file.size, start + CHUNK_SIZE));
+      const headers = {
+        "X-Upload-Id": uploadId,
+        "X-Chunk-Index": String(i),
+        "X-Total-Chunks": String(totalChunks),
+        "X-Filename": encodeURIComponent(file.name),
+        "X-Filetype": file.type || "application/octet-stream",
+      };
+
+      result = await sendChunk(chunk, headers, (loadedInChunk) => {
+        const overall = start + loadedInChunk;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        const speed = elapsed > 0 ? overall / elapsed : 0;
+        const eta = speed > 0 ? (file.size - overall) / speed : null;
+        onProgress({
+          percent: file.size ? Math.min(100, Math.round((overall / file.size) * 100)) : 100,
+          speed,
+          eta,
+        });
+      });
+    }
+
+    uploadIdRef.current = null;
+    return result;
   }
 
   const uploadFiles = useCallback(async (fileList) => {
@@ -216,6 +244,14 @@ export default function Dashboard({ initialFiles }) {
   function cancelUpload() {
     cancelledRef.current = true;
     xhrRef.current?.abort();
+    // Tell the server to drop the partial temp file.
+    const id = uploadIdRef.current;
+    if (id) {
+      fetch(`/api/upload?uploadId=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }).catch(() => {});
+      uploadIdRef.current = null;
+    }
   }
 
   function onDrop(e) {
