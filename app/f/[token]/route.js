@@ -3,8 +3,8 @@ import { stat } from "fs/promises";
 import { Readable } from "stream";
 import { getFile, absolutePath } from "@/lib/store";
 
-// Public route — anyone with the link can download. NOT covered by the
-// auth middleware matcher.
+// Public route — anyone with the link can download. No auth check here
+// (the app ships no middleware); only the unguessable token protects it.
 export const runtime = "nodejs";
 
 function contentDisposition(name) {
