@@ -106,7 +106,8 @@ function FileRow({ file, onDelete }) {
       <div className="file-meta">
         <div className="file-name">{file.name}</div>
         <div className="file-sub">
-          {formatSize(file.size)} · {formatDate(file.uploadedAt)}
+          {formatSize(file.size)} ·{" "}
+          <span suppressHydrationWarning>{formatDate(file.uploadedAt)}</span>
         </div>
       </div>
       <div className="row-actions">
