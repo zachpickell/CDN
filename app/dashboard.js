@@ -141,8 +141,19 @@ export default function Dashboard({ initialFiles }) {
           } catch {
             reject(new Error("Bad server response"));
           }
+        } else if (xhr.status === 413) {
+          reject(
+            new Error(
+              "A proxy in front of the app rejected an upload chunk as too " +
+                "large (HTTP 413). If you're behind Cloudflare, single requests " +
+                "are capped at 100MB on non-Enterprise plans — make sure this " +
+                "chunked build is the one deployed. Also raise your origin " +
+                "proxy's limit (e.g. nginx: client_max_body_size 25m;), or " +
+                "lower CHUNK_SIZE in the dashboard code."
+            )
+          );
         } else {
-          let msg = "Upload failed";
+          let msg = `Upload failed (HTTP ${xhr.status})`;
           try {
             msg = JSON.parse(xhr.responseText).error || msg;
           } catch {}
