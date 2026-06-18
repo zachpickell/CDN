@@ -70,31 +70,65 @@ export default function Dashboard({ initialFiles }) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
   const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  // null when idle, otherwise { name, percent, index, total }
+  const [progress, setProgress] = useState(null);
   const inputRef = useRef(null);
+
+  const uploading = progress !== null;
+
+  // Upload a single file via XHR so we get upload progress events
+  // (fetch can't report upload progress).
+  function uploadOne(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error("Bad server response"));
+          }
+        } else {
+          let msg = `Failed to upload ${file.name}`;
+          try {
+            msg = JSON.parse(xhr.responseText).error || msg;
+          } catch {}
+          reject(new Error(msg));
+        }
+      };
+      xhr.onerror = () => reject(new Error(`Failed to upload ${file.name}`));
+      xhr.send(fd);
+    });
+  }
 
   const uploadFiles = useCallback(async (fileList) => {
     const arr = Array.from(fileList);
     if (arr.length === 0) return;
     setError("");
-    setUploading(true);
     try {
-      for (const file of arr) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `Failed to upload ${file.name}`);
-        }
-        const entry = await res.json();
+      for (let i = 0; i < arr.length; i++) {
+        const file = arr[i];
+        setProgress({ name: file.name, percent: 0, index: i + 1, total: arr.length });
+        const entry = await uploadOne(file, (percent) =>
+          setProgress({ name: file.name, percent, index: i + 1, total: arr.length })
+        );
         setFiles((prev) => [entry, ...prev]);
       }
     } catch (e) {
       setError(e.message || "Upload failed");
     } finally {
-      setUploading(false);
+      setProgress(null);
     }
   }, []);
 
@@ -128,7 +162,9 @@ export default function Dashboard({ initialFiles }) {
 
       <div
         className={`dropzone${dragging ? " drag" : ""}`}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => {
+          if (!uploading) inputRef.current?.click();
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -137,7 +173,23 @@ export default function Dashboard({ initialFiles }) {
         onDrop={onDrop}
       >
         {uploading ? (
-          <strong>Uploading…</strong>
+          <div className="uploading" onClick={(e) => e.stopPropagation()}>
+            <div className="upload-status">
+              <span className="upload-name">{progress.name}</span>
+              <span className="upload-pct">{progress.percent}%</span>
+            </div>
+            <div className="progress-track">
+              <div
+                className="progress-fill"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+            {progress.total > 1 && (
+              <div className="hint">
+                File {progress.index} of {progress.total}
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <div>

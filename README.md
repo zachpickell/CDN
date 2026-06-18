@@ -1,1 +1,0 @@
-CDN used for private use made with claude
