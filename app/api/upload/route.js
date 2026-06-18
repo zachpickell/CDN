@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { saveStream } from "@/lib/store";
+import { isAuthed } from "@/lib/guard";
 
-// Protected by middleware (session required).
 export const runtime = "nodejs";
 // Don't let Next try to buffer/parse the body — we stream it ourselves.
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600; // allow long uploads (seconds)
 
 export async function POST(request) {
+  if (!(await isAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!request.body) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }

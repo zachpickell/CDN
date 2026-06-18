@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Personal CDN",
+  title: "Zach's CDN",
   description: "Private file hosting with shareable links",
   icon: "/icon.png",
 };

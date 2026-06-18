@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { listFiles, deleteFile } from "@/lib/store";
+import { isAuthed } from "@/lib/guard";
 
-// Protected by middleware (session required).
 export const runtime = "nodejs";
 
 export async function GET() {
+  if (!(await isAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const files = await listFiles();
   return NextResponse.json({
     files: files.map((f) => ({
@@ -17,6 +20,9 @@ export async function GET() {
 }
 
 export async function DELETE(request) {
+  if (!(await isAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const token = new URL(request.url).searchParams.get("token");
   if (!token) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 });

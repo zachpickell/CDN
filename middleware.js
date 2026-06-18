@@ -17,6 +17,8 @@ export async function middleware(request) {
 }
 
 export const config = {
-  // Run on the dashboard and protected APIs only.
-  matcher: ["/", "/api/upload", "/api/files"],
+  // Only gate the dashboard page here. The API routes verify the session
+  // inside their handlers instead — running middleware in front of the
+  // upload route breaks streaming request bodies and stalls uploads.
+  matcher: ["/"],
 };
