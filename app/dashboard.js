@@ -119,10 +119,15 @@ export default function Dashboard({ initialFiles }) {
 
   const uploading = progress !== null;
 
-  const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per request
+  // Chunk sizing. We start fairly large for speed and automatically shrink if
+  // a proxy in front of the app rejects a chunk (HTTP 413), so uploads adapt to
+  // whatever request-body limit your hosting/proxy enforces.
+  const MAX_CHUNK = 4 * 1024 * 1024; // start at 4MB
+  const MIN_CHUNK = 64 * 1024; // don't shrink below 64KB
 
-  // Send one chunk (a Blob) as a small POST. Resolves with the server's JSON.
-  function sendChunk(chunk, headers, onChunkProgress) {
+  // Send one request (a Blob body, or null for the finalize call). Rejects with
+  // an Error whose `.status` is the HTTP status, so callers can react to 413.
+  function sendChunk(body, headers, onChunkProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
@@ -131,7 +136,7 @@ export default function Dashboard({ initialFiles }) {
         xhr.setRequestHeader(k, v);
       }
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onChunkProgress(e.loaded);
+        if (e.lengthComputable && onChunkProgress) onChunkProgress(e.loaded);
       };
       xhr.onabort = () => reject(new Error("__cancelled__"));
       xhr.onload = () => {
@@ -141,23 +146,14 @@ export default function Dashboard({ initialFiles }) {
           } catch {
             reject(new Error("Bad server response"));
           }
-        } else if (xhr.status === 413) {
-          reject(
-            new Error(
-              "A proxy in front of the app rejected an upload chunk as too " +
-                "large (HTTP 413). If you're behind Cloudflare, single requests " +
-                "are capped at 100MB on non-Enterprise plans — make sure this " +
-                "chunked build is the one deployed. Also raise your origin " +
-                "proxy's limit (e.g. nginx: client_max_body_size 25m;), or " +
-                "lower CHUNK_SIZE in the dashboard code."
-            )
-          );
         } else {
           let msg = `Upload failed (HTTP ${xhr.status})`;
           try {
             msg = JSON.parse(xhr.responseText).error || msg;
           } catch {}
-          reject(new Error(msg));
+          const err = new Error(msg);
+          err.status = xhr.status;
+          reject(err);
         }
       };
       xhr.onerror = () =>
@@ -169,49 +165,66 @@ export default function Dashboard({ initialFiles }) {
               "DevTools → Application."
           )
         );
-      xhr.send(chunk);
+      xhr.send(body);
     });
   }
 
-  // Upload a single file by slicing it into chunks. Each chunk is a normal
-  // small request, which avoids Next.js request-body streaming limits entirely.
+  // Upload a single file as a sequence of chunks, halving the chunk size each
+  // time a 413 is hit until chunks fit through the proxy.
   async function uploadOne(file, onProgress) {
     const uploadId =
       (crypto.randomUUID && crypto.randomUUID()) ||
       `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     uploadIdRef.current = uploadId;
 
-    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const startedAt = Date.now();
-    let result = {};
+    let chunkSize = MAX_CHUNK;
+    let offset = 0;
 
-    for (let i = 0; i < totalChunks; i++) {
+    while (offset < file.size) {
       if (cancelledRef.current) throw new Error("__cancelled__");
-      const start = i * CHUNK_SIZE;
-      const chunk = file.slice(start, Math.min(file.size, start + CHUNK_SIZE));
-      const headers = {
-        "X-Upload-Id": uploadId,
-        "X-Chunk-Index": String(i),
-        "X-Total-Chunks": String(totalChunks),
-        "X-Filename": encodeURIComponent(file.name),
-        "X-Filetype": file.type || "application/octet-stream",
-      };
+      const end = Math.min(file.size, offset + chunkSize);
+      const chunk = file.slice(offset, end);
 
-      result = await sendChunk(chunk, headers, (loadedInChunk) => {
-        const overall = start + loadedInChunk;
-        const elapsed = (Date.now() - startedAt) / 1000;
-        const speed = elapsed > 0 ? overall / elapsed : 0;
-        const eta = speed > 0 ? (file.size - overall) / speed : null;
-        onProgress({
-          percent: file.size ? Math.min(100, Math.round((overall / file.size) * 100)) : 100,
-          speed,
-          eta,
+      try {
+        await sendChunk(chunk, { "X-Upload-Id": uploadId }, (loadedInChunk) => {
+          const overall = offset + loadedInChunk;
+          const elapsed = (Date.now() - startedAt) / 1000;
+          const speed = elapsed > 0 ? overall / elapsed : 0;
+          const eta = speed > 0 ? (file.size - overall) / speed : null;
+          onProgress({
+            percent: file.size
+              ? Math.min(99, Math.round((overall / file.size) * 100))
+              : 100,
+            speed,
+            eta,
+          });
         });
-      });
+        offset = end; // chunk accepted — advance
+      } catch (e) {
+        // Proxy rejected this chunk as too large — shrink and retry same bytes.
+        if (e.status === 413 && chunkSize > MIN_CHUNK) {
+          chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
+          continue;
+        }
+        throw e;
+      }
     }
 
+    // All bytes sent — finalize and get the file metadata.
+    const entry = await sendChunk(
+      null,
+      {
+        "X-Upload-Id": uploadId,
+        "X-Finalize": "1",
+        "X-Filename": encodeURIComponent(file.name),
+        "X-Filetype": file.type || "application/octet-stream",
+      },
+      null
+    );
+    onProgress({ percent: 100, speed: 0, eta: 0 });
     uploadIdRef.current = null;
-    return result;
+    return entry;
   }
 
   const uploadFiles = useCallback(async (fileList) => {

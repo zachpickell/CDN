@@ -6,53 +6,46 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 3600;
 
-// Each request carries one small chunk of the file. The body is intentionally
-// small (a few MB), so reading it with arrayBuffer() is cheap and reliable.
+// Protocol (all keyed by X-Upload-Id):
+//   - A normal request carries a small slice of the file as its body; we append
+//     it to the upload's temp file. Chunk size is decided by the client and can
+//     vary (it shrinks itself if a proxy rejects a chunk), so the server does
+//     not care about chunk indices — it just appends bytes in arrival order.
+//   - A request with "X-Finalize: 1" (and an empty body) promotes the temp file
+//     into the store and returns the file metadata.
 export async function POST(request) {
   if (!(await isAuthed())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const uploadId = request.headers.get("x-upload-id");
-  const chunkIndex = Number(request.headers.get("x-chunk-index"));
-  const totalChunks = Number(request.headers.get("x-total-chunks"));
-  const rawName = request.headers.get("x-filename");
-  const originalName = rawName ? decodeURIComponent(rawName) : "file";
-  const mime = request.headers.get("x-filetype") || "application/octet-stream";
-
-  if (
-    !uploadId ||
-    !Number.isInteger(chunkIndex) ||
-    !Number.isInteger(totalChunks) ||
-    chunkIndex < 0 ||
-    totalChunks < 1 ||
-    chunkIndex >= totalChunks
-  ) {
-    return NextResponse.json({ error: "Bad chunk metadata" }, { status: 400 });
+  if (!uploadId) {
+    return NextResponse.json({ error: "Missing upload id" }, { status: 400 });
   }
 
   try {
+    if (request.headers.get("x-finalize") === "1") {
+      const rawName = request.headers.get("x-filename");
+      const originalName = rawName ? decodeURIComponent(rawName) : "file";
+      const mime =
+        request.headers.get("x-filetype") || "application/octet-stream";
+
+      const entry = await finalizeUpload({ uploadId, originalName, mime });
+      if (entry.size === 0) {
+        return NextResponse.json({ error: "File is empty" }, { status: 400 });
+      }
+      return NextResponse.json({
+        token: entry.token,
+        name: entry.originalName,
+        size: entry.size,
+        uploadedAt: entry.uploadedAt,
+      });
+    }
+
     const buffer = Buffer.from(await request.arrayBuffer());
     await appendChunk(uploadId, buffer);
-
-    // Not the last chunk — acknowledge and wait for more.
-    if (chunkIndex < totalChunks - 1) {
-      return NextResponse.json({ ok: true });
-    }
-
-    // Last chunk — assemble the final file.
-    const entry = await finalizeUpload({ uploadId, originalName, mime });
-    if (entry.size === 0) {
-      return NextResponse.json({ error: "File is empty" }, { status: 400 });
-    }
-    return NextResponse.json({
-      token: entry.token,
-      name: entry.originalName,
-      size: entry.size,
-      uploadedAt: entry.uploadedAt,
-    });
+    return NextResponse.json({ ok: true });
   } catch (err) {
-    // Best-effort cleanup of any partial temp file.
     await abortUpload(uploadId).catch(() => {});
     return NextResponse.json(
       { error: "Upload failed while saving" },
@@ -61,7 +54,7 @@ export async function POST(request) {
   }
 }
 
-// Called when the user cancels mid-upload — discard the partial temp file.
+// Cancel mid-upload — discard the partial temp file.
 export async function DELETE(request) {
   if (!(await isAuthed())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
