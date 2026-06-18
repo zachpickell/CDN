@@ -1,37 +1,46 @@
 import { NextResponse } from "next/server";
-import { saveFile } from "@/lib/store";
+import { saveStream } from "@/lib/store";
 
 // Protected by middleware (session required).
 export const runtime = "nodejs";
+// Don't let Next try to buffer/parse the body — we stream it ourselves.
+export const dynamic = "force-dynamic";
+export const maxDuration = 3600; // allow long uploads (seconds)
 
 export async function POST(request) {
-  let formData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "Invalid upload" }, { status: 400 });
-  }
-
-  const file = formData.get("file");
-  if (!file || typeof file.arrayBuffer !== "function") {
+  if (!request.body) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  if (bytes.length === 0) {
-    return NextResponse.json({ error: "File is empty" }, { status: 400 });
+  // The client sends the raw file as the body, with the name in a header.
+  const rawName = request.headers.get("x-filename");
+  const originalName = rawName ? decodeURIComponent(rawName) : "file";
+  const mime =
+    request.headers.get("x-filetype") ||
+    request.headers.get("content-type") ||
+    "application/octet-stream";
+
+  try {
+    const entry = await saveStream({
+      originalName,
+      mime,
+      webStream: request.body,
+    });
+
+    if (entry.size === 0) {
+      return NextResponse.json({ error: "File is empty" }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      token: entry.token,
+      name: entry.originalName,
+      size: entry.size,
+      uploadedAt: entry.uploadedAt,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Upload failed while saving" },
+      { status: 500 }
+    );
   }
-
-  const entry = await saveFile({
-    originalName: file.name,
-    mime: file.type,
-    bytes,
-  });
-
-  return NextResponse.json({
-    token: entry.token,
-    name: entry.originalName,
-    size: entry.size,
-    uploadedAt: entry.uploadedAt,
-  });
 }

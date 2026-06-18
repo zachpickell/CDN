@@ -3,6 +3,7 @@ import "./globals.css";
 export const metadata = {
   title: "Personal CDN",
   description: "Private file hosting with shareable links",
+  icon: "/icon.png",
 };
 
 export default function RootLayout({ children }) {

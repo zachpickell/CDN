@@ -19,6 +19,22 @@ function formatDate(ts) {
   return new Date(ts).toLocaleString();
 }
 
+function formatEta(seconds) {
+  if (seconds == null || !isFinite(seconds)) return "";
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s left`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return `${m}m ${rem}s left`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m left`;
+}
+
+function formatSpeed(bytesPerSec) {
+  if (!bytesPerSec) return "";
+  return `${formatSize(bytesPerSec)}/s`;
+}
+
 function FileRow({ file, onDelete }) {
   const [copied, setCopied] = useState(false);
 
@@ -83,16 +99,28 @@ export default function Dashboard({ initialFiles }) {
   // (fetch can't report upload progress).
   function uploadOne(file, onProgress) {
     return new Promise((resolve, reject) => {
-      const fd = new FormData();
-      fd.append("file", file);
-
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
       xhr.open("POST", "/api/upload");
+      // Send the raw file as the body so the server can stream it to disk
+      // instead of buffering the whole thing in memory.
+      xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
+      xhr.setRequestHeader(
+        "X-Filetype",
+        file.type || "application/octet-stream"
+      );
 
+      const startedAt = Date.now();
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          onProgress(Math.round((e.loaded / e.total) * 100));
+          const elapsed = (Date.now() - startedAt) / 1000;
+          const speed = elapsed > 0 ? e.loaded / elapsed : 0; // bytes/sec
+          const eta = speed > 0 ? (e.total - e.loaded) / speed : null;
+          onProgress({
+            percent: Math.round((e.loaded / e.total) * 100),
+            speed,
+            eta,
+          });
         }
       };
       xhr.onabort = () => reject(new Error("__cancelled__"));
@@ -112,7 +140,7 @@ export default function Dashboard({ initialFiles }) {
         }
       };
       xhr.onerror = () => reject(new Error(`Failed to upload ${file.name}`));
-      xhr.send(fd);
+      xhr.send(file);
     });
   }
 
@@ -125,9 +153,23 @@ export default function Dashboard({ initialFiles }) {
       for (let i = 0; i < arr.length; i++) {
         if (cancelledRef.current) break;
         const file = arr[i];
-        setProgress({ name: file.name, percent: 0, index: i + 1, total: arr.length });
-        const entry = await uploadOne(file, (percent) =>
-          setProgress({ name: file.name, percent, index: i + 1, total: arr.length })
+        setProgress({
+          name: file.name,
+          percent: 0,
+          eta: null,
+          speed: 0,
+          index: i + 1,
+          total: arr.length,
+        });
+        const entry = await uploadOne(file, ({ percent, eta, speed }) =>
+          setProgress({
+            name: file.name,
+            percent,
+            eta,
+            speed,
+            index: i + 1,
+            total: arr.length,
+          })
         );
         setFiles((prev) => [entry, ...prev]);
       }
@@ -202,9 +244,15 @@ export default function Dashboard({ initialFiles }) {
             </div>
             <div className="upload-footer">
               <span className="hint">
-                {progress.total > 1
-                  ? `File ${progress.index} of ${progress.total}`
-                  : "Uploading…"}
+                {[
+                  progress.total > 1
+                    ? `File ${progress.index} of ${progress.total}`
+                    : null,
+                  formatSpeed(progress.speed),
+                  formatEta(progress.eta),
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Starting…"}
               </span>
               <button className="ghost" onClick={cancelUpload}>
                 Cancel
