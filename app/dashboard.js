@@ -35,6 +35,47 @@ function formatSpeed(bytesPerSec) {
   return `${formatSize(bytesPerSec)}/s`;
 }
 
+// Map a file to a category used for its colored icon, à la Drive.
+function fileKind(file) {
+  const type = (file.type || "").toLowerCase();
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (type.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "heic", "bmp"].includes(ext))
+    return "image";
+  if (type.startsWith("video/") || ["mp4", "mov", "mkv", "avi", "webm"].includes(ext))
+    return "video";
+  if (type.startsWith("audio/") || ["mp3", "wav", "flac", "aac", "ogg", "m4a"].includes(ext))
+    return "audio";
+  if (type === "application/pdf" || ext === "pdf") return "pdf";
+  if (["zip", "rar", "7z", "tar", "gz", "bz2"].includes(ext)) return "archive";
+  if (["doc", "docx", "txt", "rtf", "md", "pages"].includes(ext)) return "doc";
+  if (["xls", "xlsx", "csv", "numbers"].includes(ext)) return "sheet";
+  if (["js", "ts", "jsx", "tsx", "py", "rb", "go", "rs", "java", "c", "cpp", "html", "css", "json", "sh"].includes(ext))
+    return "code";
+  return "file";
+}
+
+const KIND_GLYPH = {
+  image: "🖼",
+  video: "▶",
+  audio: "♪",
+  pdf: "PDF",
+  archive: "ZIP",
+  doc: "DOC",
+  sheet: "XLS",
+  code: "</>",
+  file: "FILE",
+};
+
+function FileIcon({ file }) {
+  const kind = fileKind(file);
+  const glyph = KIND_GLYPH[kind];
+  return (
+    <div className={`file-icon kind-${kind}`} aria-hidden="true">
+      {glyph}
+    </div>
+  );
+}
+
 function FileRow({ file, onDelete }) {
   const [copied, setCopied] = useState(false);
 
@@ -61,6 +102,7 @@ function FileRow({ file, onDelete }) {
 
   return (
     <div className="file-row">
+      <FileIcon file={file} />
       <div className="file-meta">
         <div className="file-name">{file.name}</div>
         <div className="file-sub">
@@ -68,14 +110,62 @@ function FileRow({ file, onDelete }) {
         </div>
       </div>
       <div className="row-actions">
-        <button className="secondary" onClick={copy}>
-          {copied ? <span className="copied">Copied!</span> : "Copy link"}
+        <button
+          className="icon-btn"
+          onClick={copy}
+          title="Copy link"
+          aria-label="Copy link"
+        >
+          {copied ? (
+            <span className="copied">Copied!</span>
+          ) : (
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-2 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+              />
+            </svg>
+          )}
         </button>
-        <a href={shareUrl} target="_blank" rel="noreferrer">
-          <button className="ghost">Open</button>
+        <a
+          className="icon-btn"
+          href={shareUrl}
+          target="_blank"
+          rel="noreferrer"
+          title="Open"
+          aria-label="Open"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
+            />
+          </svg>
         </a>
-        <button className="ghost" onClick={() => onDelete(file.token)}>
-          Delete
+        <button
+          className="icon-btn danger"
+          onClick={() => onDelete(file.token)}
+          title="Delete"
+          aria-label="Delete"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
+            />
+          </svg>
         </button>
       </div>
     </div>

@@ -253,17 +253,69 @@ button.ghost:hover {
   margin-top: 28px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .file-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  padding: 14px 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s ease;
+}
+
+.file-row:last-child {
+  border-bottom: none;
+}
+
+.file-row:hover {
+  background: var(--panel-2);
+}
+
+/* File-type icon, à la Drive */
+.file-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #5a6477;
+}
+
+.file-icon.kind-image {
+  background: #2bb673;
+}
+.file-icon.kind-video {
+  background: #e9596b;
+}
+.file-icon.kind-audio {
+  background: #b06bd6;
+}
+.file-icon.kind-pdf {
+  background: #e2493b;
+}
+.file-icon.kind-archive {
+  background: #c98a2b;
+}
+.file-icon.kind-doc {
+  background: #4a7bf0;
+}
+.file-icon.kind-sheet {
+  background: #2bb673;
+}
+.file-icon.kind-code {
+  background: #3a4150;
+  color: var(--accent);
 }
 
 .file-meta {
@@ -272,7 +324,8 @@ button.ghost:hover {
 }
 
 .file-name {
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -286,8 +339,53 @@ button.ghost:hover {
 
 .row-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* Reveal actions on hover; keep visible on focus and touch devices */
+.file-row:hover .row-actions,
+.file-row:focus-within .row-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .row-actions {
+    opacity: 1;
+  }
+}
+
+/* Square, evenly-aligned icon buttons */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.icon-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(255, 107, 107, 0.14);
+  color: var(--danger);
+}
+
+.icon-btn .copied {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .empty {
