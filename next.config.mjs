@@ -3,7 +3,7 @@ const nextConfig = {
   // Allow larger uploads to the server action / route handler
   experimental: {
     serverActions: {
-      bodySizeLimit: "100mb",
+      bodySizeLimit: "100gb",
     },
   },
 };
