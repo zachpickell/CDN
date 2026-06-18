@@ -76,6 +76,26 @@ function FileIcon({ file }) {
   );
 }
 
+// Show a real thumbnail for images (served straight from the share link), and
+// fall back to the colored type icon for everything else or if the image
+// can't be loaded.
+function FileThumb({ file }) {
+  const [failed, setFailed] = useState(false);
+  if (fileKind(file) === "image" && !failed) {
+    return (
+      <img
+        className="file-icon file-thumb"
+        src={`/f/${file.token}`}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <FileIcon file={file} />;
+}
+
 function FolderIcon() {
   return (
     <div className="file-icon kind-folder" aria-hidden="true">
@@ -168,15 +188,15 @@ function FolderRow({ folder, count, onOpen, onRename, onMove, onDelete }) {
   );
 }
 
-function FileRow({ file, onMove, onDelete }) {
+function FileRow({ file, onMove, onRename, onDelete }) {
   const [copied, setCopied] = useState(false);
 
-  const shareUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/f/${file.token}`
-      : `/f/${file.token}`;
+  // Render a relative href so server and client markup match (avoids a
+  // hydration warning); the absolute URL is built at copy time.
+  const relPath = `/f/${file.token}`;
 
   async function copy() {
+    const shareUrl = `${window.location.origin}${relPath}`;
     try {
       await navigator.clipboard.writeText(shareUrl);
     } catch {
@@ -194,7 +214,7 @@ function FileRow({ file, onMove, onDelete }) {
 
   return (
     <div className="file-row">
-      <FileIcon file={file} />
+      <FileThumb file={file} />
       <div className="file-meta">
         <div className="file-name">{file.name}</div>
         <div className="file-sub">
@@ -226,6 +246,23 @@ function FileRow({ file, onMove, onDelete }) {
         </button>
         <button
           className="icon-btn"
+          onClick={() => onRename(file)}
+          title="Rename"
+          aria-label="Rename file"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
+            />
+          </svg>
+        </button>
+        <button
+          className="icon-btn"
           onClick={() => onMove({ type: "file", id: file.token, name: file.name })}
           title="Move"
           aria-label="Move file"
@@ -234,7 +271,7 @@ function FileRow({ file, onMove, onDelete }) {
         </button>
         <a
           className="icon-btn"
-          href={shareUrl}
+          href={relPath}
           target="_blank"
           rel="noreferrer"
           title="Open"
@@ -580,6 +617,27 @@ export default function Dashboard({ initialFiles, initialFolders }) {
     await fetch(`/api/files?token=${encodeURIComponent(token)}`, {
       method: "DELETE",
     });
+  }
+
+  async function renameFileEntry(file) {
+    const name = window.prompt("Rename file", file.name);
+    if (name == null) return;
+    const clean = name.trim();
+    if (!clean || clean === file.name) return;
+    try {
+      const res = await fetch("/api/files", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: file.token, name: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't rename file");
+      setFiles((prev) =>
+        prev.map((f) => (f.token === file.token ? { ...f, name: clean } : f))
+      );
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function createNewFolder() {
@@ -934,7 +992,13 @@ export default function Dashboard({ initialFiles, initialFolders }) {
             <div className="empty">No files match “{query}”.</div>
           ) : (
             visibleFiles.map((f) => (
-              <FileRow key={f.token} file={f} onMove={setMoveTarget} onDelete={onDeleteFile} />
+              <FileRow
+                key={f.token}
+                file={f}
+                onMove={setMoveTarget}
+                onRename={renameFileEntry}
+                onDelete={onDeleteFile}
+              />
             ))
           )
         ) : isEmptyHere ? (
@@ -957,7 +1021,13 @@ export default function Dashboard({ initialFiles, initialFolders }) {
               />
             ))}
             {visibleFiles.map((f) => (
-              <FileRow key={f.token} file={f} onMove={setMoveTarget} onDelete={onDeleteFile} />
+              <FileRow
+                key={f.token}
+                file={f}
+                onMove={setMoveTarget}
+                onRename={renameFileEntry}
+                onDelete={onDeleteFile}
+              />
             ))}
           </>
         )}

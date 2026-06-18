@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listFiles, deleteFile, moveFile } from "@/lib/store";
+import { listFiles, deleteFile, moveFile, renameFile } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export async function GET() {
   });
 }
 
-// Move a file into a folder (or to the root). Body: { token, folderId }
+// Rename and/or move a file. Body: { token, name?, folderId? }
 export async function PATCH(request) {
   if (!(await isAuthed())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,9 +35,21 @@ export async function PATCH(request) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 });
   }
   try {
-    const entry = await moveFile(body.token, body.folderId ?? null);
+    let entry = null;
+    if (typeof body.name === "string") {
+      entry = await renameFile(body.token, body.name);
+      if (!entry) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+    if (body.folderId !== undefined) {
+      entry = await moveFile(body.token, body.folderId ?? null);
+      if (!entry) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
     if (!entry) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
     return NextResponse.json({
       file: {

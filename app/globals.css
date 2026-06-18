@@ -559,6 +559,12 @@ button.ghost:hover {
   color: #fff;
 }
 
+/* Real image preview filling the icon box */
+img.file-thumb {
+  object-fit: cover;
+  background: var(--panel-2);
+}
+
 /* Toolbar above the listing: breadcrumb trail + New folder button */
 .folder-bar {
   display: flex;
