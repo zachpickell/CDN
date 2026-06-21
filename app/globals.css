@@ -557,7 +557,8 @@ img.glyph {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0;
-  overflow: hidden;
+  /* No overflow:hidden here — it would clip the open action menu. The
+     thumbnail clips itself instead (see .card-thumb). */
 }
 
 .card-file:hover {
@@ -596,7 +597,8 @@ img.glyph {
   background: var(--bg);
   border: none;
   border-top: 1px solid var(--border);
-  border-radius: 0;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -618,7 +620,8 @@ img.glyph {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  /* No overflow:hidden — it would clip the action menu on the last rows.
+     Corners are rounded on the first/last rows instead. */
 }
 
 .row {
@@ -629,8 +632,15 @@ img.glyph {
   border-bottom: 1px solid var(--border);
 }
 
+.row:first-child {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
 .row:last-child {
   border-bottom: none;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 .row:hover {
@@ -717,12 +727,20 @@ img.glyph {
   position: absolute;
   top: calc(100% + 4px);
   min-width: 172px;
+  max-height: min(70vh, 360px);
+  overflow-y: auto;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
   z-index: 50;
+}
+
+/* Flip above the trigger when there isn't room below. */
+.menu.menu-up {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .menu-right {

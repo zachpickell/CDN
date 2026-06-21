@@ -149,6 +149,7 @@ function Thumb({ file, big }) {
 
 function Dropdown({ trigger, children, className, align = "right" }) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -158,12 +159,19 @@ function Dropdown({ trigger, children, className, align = "right" }) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
+  // Decide whether to open the menu above the trigger when space below is tight.
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setUp(spaceBelow < 300 && rect.top > spaceBelow);
+  }, [open]);
   return (
     <div className="menu-wrap" ref={ref}>
       {trigger(open, setOpen)}
       {open && (
         <div
-          className={`menu menu-${align} ${className || ""}`}
+          className={`menu menu-${align} ${up ? "menu-up" : ""} ${className || ""}`}
           onClick={(e) => {
             e.stopPropagation();
             setOpen(false);
