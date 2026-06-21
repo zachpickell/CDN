@@ -3,7 +3,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
+/* ----------------------------- formatting ------------------------------- */
+
 function formatSize(bytes) {
+  if (bytes == null) return "—";
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];
   let v = bytes / 1024;
@@ -16,7 +19,11 @@ function formatSize(bytes) {
 }
 
 function formatDate(ts) {
-  return new Date(ts).toLocaleString();
+  return new Date(ts).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatEta(seconds) {
@@ -35,7 +42,6 @@ function formatSpeed(bytesPerSec) {
   return `${formatSize(bytesPerSec)}/s`;
 }
 
-// Map a file to a category used for its colored icon, à la Drive.
 function fileKind(file) {
   const type = (file.type || "").toLowerCase();
   const ext = (file.name.split(".").pop() || "").toLowerCase();
@@ -55,7 +61,7 @@ function fileKind(file) {
 }
 
 const KIND_GLYPH = {
-  image: "🖼",
+  image: "IMG",
   video: "▶",
   audio: "♪",
   pdf: "PDF",
@@ -66,25 +72,68 @@ const KIND_GLYPH = {
   file: "FILE",
 };
 
-function FileIcon({ file }) {
-  const kind = fileKind(file);
-  const glyph = KIND_GLYPH[kind];
+/* -------------------------------- icons --------------------------------- */
+
+const I = {
+  plus: "M12 5v14M5 12h14",
+  upload: "M12 19V6M5 12l7-7 7 7M5 21h14",
+  folderPlus: "M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7ZM12 11v5M9.5 13.5h5",
+  grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35",
+  kebab: "M12 6h.01M12 12h.01M12 18h.01",
+  copy: "M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-2 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1",
+  open: "M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4",
+  pencil: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z",
+  move: "M3 7V5a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v2M3 7h18M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9M12 11v6m0 0 2.5-2.5M12 17l-2.5-2.5",
+  trash: "M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3",
+  logout: "M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
+  cloud: "M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 0 1 18 17H7Z",
+};
+
+function Icon({ d, size = 18, fill = false }) {
   return (
-    <div className={`file-icon kind-${kind}`} aria-hidden="true">
-      {glyph}
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path
+        d={d}
+        fill={fill ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FolderGlyph({ size = 22 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"
+      />
+    </svg>
+  );
+}
+
+function TypeGlyph({ file, big }) {
+  const kind = fileKind(file);
+  return (
+    <div className={`glyph kind-${kind}${big ? " glyph-big" : ""}`} aria-hidden="true">
+      {KIND_GLYPH[kind]}
     </div>
   );
 }
 
-// Show a real thumbnail for images (served straight from the share link), and
-// fall back to the colored type icon for everything else or if the image
-// can't be loaded.
-function FileThumb({ file }) {
+// Image preview from the share link, falling back to the type glyph.
+function Thumb({ file, big }) {
   const [failed, setFailed] = useState(false);
-  if (fileKind(file) === "image" && !failed) {
+  const isImg = fileKind(file) === "image" && !failed;
+  if (isImg) {
     return (
       <img
-        className="file-icon file-thumb"
+        className={big ? "thumb-img" : "glyph thumb-mini"}
         src={`/f/${file.token}`}
         alt=""
         loading="lazy"
@@ -93,222 +142,212 @@ function FileThumb({ file }) {
       />
     );
   }
-  return <FileIcon file={file} />;
+  return <TypeGlyph file={file} big={big} />;
 }
 
-function FolderIcon() {
-  return (
-    <div className="file-icon kind-folder" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        <path
-          fill="currentColor"
-          d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"
-        />
-      </svg>
-    </div>
-  );
-}
+/* ----------------------------- dropdown menu ---------------------------- */
 
-function MoveIcon() {
+function Dropdown({ trigger, children, className, align = "right" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3 7V5a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v2M3 7h18M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9M12 11v6m0 0 2.5-2.5M12 17l-2.5-2.5"
-      />
-    </svg>
-  );
-}
-
-function FolderRow({ folder, count, onOpen, onRename, onMove, onDelete }) {
-  return (
-    <div className="file-row folder-row">
-      <button
-        className="folder-open"
-        onClick={() => onOpen(folder.id)}
-        title={`Open ${folder.name}`}
-      >
-        <FolderIcon />
-        <div className="file-meta">
-          <div className="file-name">{folder.name}</div>
-          <div className="file-sub">
-            {count === 1 ? "1 item" : `${count} items`}
-          </div>
+    <div className="menu-wrap" ref={ref}>
+      {trigger(open, setOpen)}
+      {open && (
+        <div
+          className={`menu menu-${align} ${className || ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+          }}
+        >
+          {children}
         </div>
-      </button>
-      <div className="row-actions">
-        <button
-          className="icon-btn"
-          onClick={() => onRename(folder)}
-          title="Rename"
-          aria-label="Rename folder"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-            />
-          </svg>
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => onMove({ type: "folder", id: folder.id, name: folder.name })}
-          title="Move"
-          aria-label="Move folder"
-        >
-          <MoveIcon />
-        </button>
-        <button
-          className="icon-btn danger"
-          onClick={() => onDelete(folder)}
-          title="Delete"
-          aria-label="Delete folder"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
-            />
-          </svg>
-        </button>
-      </div>
+      )}
     </div>
   );
 }
 
-function FileRow({ file, onMove, onRename, onDelete }) {
-  const [copied, setCopied] = useState(false);
+function MenuItem({ icon, label, onClick, danger }) {
+  // No stopPropagation here on purpose: the click bubbles to the enclosing
+  // `.menu` container, which closes the dropdown (and stops propagation there,
+  // so it never reaches a clickable card behind it).
+  return (
+    <button
+      className={`menu-item${danger ? " danger" : ""}`}
+      onClick={onClick}
+    >
+      <Icon d={icon} size={16} />
+      <span>{label}</span>
+    </button>
+  );
+}
 
-  // Render a relative href so server and client markup match (avoids a
-  // hydration warning); the absolute URL is built at copy time.
+// Action menu shared by files and folders. `actions` is an array of
+// { icon, label, onClick, danger } or { sep:true }.
+function ItemMenu({ actions }) {
+  return (
+    <Dropdown
+      align="right"
+      trigger={(open, setOpen) => (
+        <button
+          className="kebab"
+          aria-label="More actions"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+        >
+          <Icon d={I.kebab} size={18} fill />
+        </button>
+      )}
+    >
+      {actions.map((a, i) =>
+        a.sep ? (
+          <div key={i} className="menu-sep" />
+        ) : (
+          <MenuItem
+            key={i}
+            icon={a.icon}
+            label={a.label}
+            onClick={a.onClick}
+            danger={a.danger}
+          />
+        )
+      )}
+    </Dropdown>
+  );
+}
+
+/* -------------------------------- items --------------------------------- */
+
+function fileActions(file, { copy, open, onRename, onMove, onDelete }) {
+  return [
+    { icon: I.open, label: "Open", onClick: open },
+    { icon: I.copy, label: "Copy link", onClick: copy },
+    { icon: I.pencil, label: "Rename", onClick: () => onRename(file) },
+    {
+      icon: I.move,
+      label: "Move",
+      onClick: () => onMove({ type: "file", id: file.token, name: file.name }),
+    },
+    { sep: true },
+    { icon: I.trash, label: "Delete", danger: true, onClick: () => onDelete(file.token) },
+  ];
+}
+
+function folderActions(folder, { onOpen, onRename, onMove, onDelete }) {
+  return [
+    { icon: I.open, label: "Open", onClick: () => onOpen(folder.id) },
+    { icon: I.pencil, label: "Rename", onClick: () => onRename(folder) },
+    {
+      icon: I.move,
+      label: "Move",
+      onClick: () => onMove({ type: "folder", id: folder.id, name: folder.name }),
+    },
+    { sep: true },
+    { icon: I.trash, label: "Delete", danger: true, onClick: () => onDelete(folder) },
+  ];
+}
+
+function FileItem({ file, view, onMove, onRename, onDelete, onFlash }) {
   const relPath = `/f/${file.token}`;
-
-  async function copy() {
-    const shareUrl = `${window.location.origin}${relPath}`;
+  const open = () => window.open(relPath, "_blank", "noopener,noreferrer");
+  const copy = async () => {
+    const url = `${window.location.origin}${relPath}`;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(url);
     } catch {
-      // Fallback for older browsers
       const el = document.createElement("textarea");
-      el.value = shareUrl;
+      el.value = url;
       document.body.appendChild(el);
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    onFlash("Link copied");
+  };
+  const actions = fileActions(file, { copy, open, onRename, onMove, onDelete });
+
+  if (view === "grid") {
+    return (
+      <div className="card card-file">
+        <div className="card-head">
+          <TypeGlyph file={file} />
+          <div className="card-title" title={file.name}>
+            {file.name}
+          </div>
+          <ItemMenu actions={actions} />
+        </div>
+        <button className="card-thumb" onClick={open} title="Open">
+          <Thumb file={file} big />
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className="file-row">
-      <FileThumb file={file} />
-      <div className="file-meta">
-        <div className="file-name">{file.name}</div>
-        <div className="file-sub">
+    <div className="row">
+      <Thumb file={file} />
+      <div className="row-main">
+        <div className="row-name" title={file.name}>
+          {file.name}
+        </div>
+        <div className="row-sub">
           {formatSize(file.size)} ·{" "}
           <span suppressHydrationWarning>{formatDate(file.uploadedAt)}</span>
         </div>
       </div>
-      <div className="row-actions">
-        <button
-          className="icon-btn"
-          onClick={copy}
-          title="Copy link"
-          aria-label="Copy link"
-        >
-          {copied ? (
-            <span className="copied">Copied!</span>
-          ) : (
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-2 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-              />
-            </svg>
-          )}
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => onRename(file)}
-          title="Rename"
-          aria-label="Rename file"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-            />
-          </svg>
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => onMove({ type: "file", id: file.token, name: file.name })}
-          title="Move"
-          aria-label="Move file"
-        >
-          <MoveIcon />
-        </button>
-        <a
-          className="icon-btn"
-          href={relPath}
-          target="_blank"
-          rel="noreferrer"
-          title="Open"
-          aria-label="Open"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
-            />
-          </svg>
-        </a>
-        <button
-          className="icon-btn danger"
-          onClick={() => onDelete(file.token)}
-          title="Delete"
-          aria-label="Delete"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
-            />
-          </svg>
-        </button>
-      </div>
+      <button className="row-quick" onClick={copy} title="Copy link" aria-label="Copy link">
+        <Icon d={I.copy} />
+      </button>
+      <ItemMenu actions={actions} />
     </div>
   );
 }
+
+function FolderItem({ folder, view, count, onOpen, onRename, onMove, onDelete }) {
+  const actions = folderActions(folder, { onOpen, onRename, onMove, onDelete });
+
+  if (view === "grid") {
+    return (
+      <div
+        className="card card-folder"
+        onClick={() => onOpen(folder.id)}
+        title={folder.name}
+      >
+        <span className="card-folder-icon">
+          <FolderGlyph size={20} />
+        </span>
+        <span className="card-folder-name">{folder.name}</span>
+        <ItemMenu actions={actions} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="row row-folder" onClick={() => onOpen(folder.id)}>
+      <span className="glyph kind-folder">
+        <FolderGlyph size={20} />
+      </span>
+      <div className="row-main">
+        <div className="row-name">{folder.name}</div>
+        <div className="row-sub">{count === 1 ? "1 item" : `${count} items`}</div>
+      </div>
+      <ItemMenu actions={actions} />
+    </div>
+  );
+}
+
+/* -------------------------------- modals -------------------------------- */
 
 function ErrorModal({ message, onClose }) {
   return (
@@ -333,10 +372,7 @@ function ErrorModal({ message, onClose }) {
   );
 }
 
-// Picker that lists every folder as an indented tree so the user can choose a
-// destination. `disabledIds` blocks moving a folder into itself/its subtree.
 function MoveModal({ target, folders, onClose, onChoose }) {
-  // Build depth for each folder by walking parents.
   const byId = useMemo(() => {
     const m = new Map();
     for (const f of folders) m.set(f.id, f);
@@ -369,7 +405,6 @@ function MoveModal({ target, folders, onClose, onChoose }) {
     return d;
   }
 
-  // Stable, parent-before-child ordering.
   const ordered = useMemo(() => {
     const out = [];
     const visit = (parentId) => {
@@ -400,8 +435,8 @@ function MoveModal({ target, folders, onClose, onChoose }) {
         <p className="modal-message">Choose a destination folder.</p>
         <div className="move-list">
           <button className="move-item" onClick={() => onChoose(null)}>
-            <FolderIcon />
-            <span>Home (root)</span>
+            <FolderGlyph size={18} />
+            <span>My Files (home)</span>
           </button>
           {ordered.map((f) => (
             <button
@@ -411,7 +446,7 @@ function MoveModal({ target, folders, onClose, onChoose }) {
               style={{ paddingLeft: `${14 + depth(f.id) * 18}px` }}
               onClick={() => onChoose(f.id)}
             >
-              <FolderIcon />
+              <FolderGlyph size={18} />
               <span>{f.name}</span>
             </button>
           ))}
@@ -421,93 +456,104 @@ function MoveModal({ target, folders, onClose, onChoose }) {
   );
 }
 
-// Storage summary: a disk-usage bar for the drive DATA_DIR lives on, plus how
-// much this app's own uploads take up. `filesTotal`/`fileCount` come from live
-// client state so they update the instant a file is added or removed.
-function StorageBar({ stats, filesTotal, fileCount }) {
+/* ------------------------------ storage meter --------------------------- */
+
+function StorageMeter({ stats, filesTotal, fileCount }) {
   const disk = stats?.disk;
   const pct =
     disk && disk.total > 0
       ? Math.min(100, Math.max(0, (disk.used / disk.total) * 100))
       : null;
   return (
-    <div className="storage">
-      <div className="storage-head">
-        <span className="storage-title">Storage</span>
-        <span className="storage-sub">
-          {fileCount === 1 ? "1 file" : `${fileCount} files`} ·{" "}
-          {formatSize(filesTotal)}
-        </span>
+    <div className="meter">
+      <div className="meter-top">
+        <Icon d={I.cloud} size={16} />
+        <span>Storage</span>
       </div>
       {disk ? (
         <>
-          <div className="storage-track">
-            <div className="storage-fill" style={{ width: `${pct}%` }} />
+          <div className="meter-track">
+            <div className="meter-fill" style={{ width: `${pct}%` }} />
           </div>
-          <div className="storage-foot">
-            <span>
-              {formatSize(disk.used)} used of {formatSize(disk.total)}
-            </span>
-            <span className="storage-free">{formatSize(disk.free)} free</span>
+          <div className="meter-label">
+            {formatSize(disk.used)} of {formatSize(disk.total)} used
+          </div>
+          <div className="meter-sub">
+            {formatSize(disk.free)} free ·{" "}
+            {fileCount === 1 ? "1 file" : `${fileCount} files`} ·{" "}
+            {formatSize(filesTotal)}
           </div>
         </>
       ) : (
-        <div className="storage-foot">
-          <span>{formatSize(filesTotal)} used by your files</span>
+        <div className="meter-label">
+          {fileCount === 1 ? "1 file" : `${fileCount} files`} ·{" "}
+          {formatSize(filesTotal)}
         </div>
       )}
     </div>
   );
 }
 
-export default function Dashboard({
-  initialFiles,
-  initialFolders,
-  initialStats,
-}) {
+/* ------------------------------- dashboard ------------------------------ */
+
+export default function Dashboard({ initialFiles, initialFolders, initialStats }) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
   const [folders, setFolders] = useState(initialFolders || []);
   const [stats, setStats] = useState(initialStats || null);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [query, setQuery] = useState("");
+  const [view, setView] = useState("grid");
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [notice, setNotice] = useState("");
   const [moveTarget, setMoveTarget] = useState(null);
-  // null when idle, otherwise { name, percent, index, total }
   const [progress, setProgress] = useState(null);
+
   const inputRef = useRef(null);
   const xhrRef = useRef(null);
   const cancelledRef = useRef(false);
   const uploadIdRef = useRef(null);
-  // Mirror the active folder so async upload code reads the latest value.
   const folderRef = useRef(null);
+  const noticeTimer = useRef(null);
+
   useEffect(() => {
     folderRef.current = currentFolderId;
   }, [currentFolderId]);
 
-  // Pull fresh disk usage from the server (after uploads/deletes change it).
+  // Restore the saved grid/list preference.
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("cdn_view");
+      if (v === "grid" || v === "list") setView(v);
+    } catch {}
+  }, []);
+
+  const chooseView = (v) => {
+    setView(v);
+    try {
+      localStorage.setItem("cdn_view", v);
+    } catch {}
+  };
+
+  const flash = useCallback((msg) => {
+    setNotice(msg);
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(""), 1800);
+  }, []);
+
   const refreshStats = useCallback(async () => {
     try {
       const res = await fetch("/api/storage");
       if (res.ok) setStats(await res.json());
-    } catch {
-      // Non-critical; leave the last known stats in place.
-    }
+    } catch {}
   }, []);
 
   const uploading = progress !== null;
 
-  // Chunk sizing. We start fairly large for speed and automatically shrink if
-  // a proxy in front of the app rejects a chunk (HTTP 413), so uploads adapt to
-  // whatever request-body limit your hosting/proxy enforces.
-  const MAX_CHUNK = 4 * 1024 * 1024; // start at 4MB
-  const MIN_CHUNK = 64 * 1024; // don't shrink below 64KB
+  const MAX_CHUNK = 4 * 1024 * 1024;
+  const MIN_CHUNK = 64 * 1024;
 
-  // Send one request (a Blob body, or null for the finalize call). Rejects with
-  // an Error whose `.status` is the HTTP status, so callers can react to 413.
   function sendChunk(body, headers, onChunkProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -550,8 +596,6 @@ export default function Dashboard({
     });
   }
 
-  // Upload a single file as a sequence of chunks, halving the chunk size each
-  // time a 413 is hit until chunks fit through the proxy.
   async function uploadOne(file, onProgress) {
     const uploadId =
       (crypto.randomUUID && crypto.randomUUID()) ||
@@ -581,9 +625,8 @@ export default function Dashboard({
             eta,
           });
         });
-        offset = end; // chunk accepted — advance
+        offset = end;
       } catch (e) {
-        // Proxy rejected this chunk as too large — shrink and retry same bytes.
         if (e.status === 413 && chunkSize > MIN_CHUNK) {
           chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
           continue;
@@ -592,8 +635,6 @@ export default function Dashboard({
       }
     }
 
-    // All bytes sent — finalize and get the file metadata. The file lands in
-    // whatever folder is open when the upload finishes.
     const finalizeHeaders = {
       "X-Upload-Id": uploadId,
       "X-Finalize": "1",
@@ -609,49 +650,50 @@ export default function Dashboard({
     return entry;
   }
 
-  const uploadFiles = useCallback(async (fileList) => {
-    const arr = Array.from(fileList);
-    if (arr.length === 0) return;
-    setError("");
-    cancelledRef.current = false;
-    try {
-      for (let i = 0; i < arr.length; i++) {
-        if (cancelledRef.current) break;
-        const file = arr[i];
-        setProgress({
-          name: file.name,
-          percent: 0,
-          eta: null,
-          speed: 0,
-          index: i + 1,
-          total: arr.length,
-        });
-        const entry = await uploadOne(file, ({ percent, eta, speed }) =>
+  const uploadFiles = useCallback(
+    async (fileList) => {
+      const arr = Array.from(fileList);
+      if (arr.length === 0) return;
+      setError("");
+      cancelledRef.current = false;
+      try {
+        for (let i = 0; i < arr.length; i++) {
+          if (cancelledRef.current) break;
+          const file = arr[i];
           setProgress({
             name: file.name,
-            percent,
-            eta,
-            speed,
+            percent: 0,
+            eta: null,
+            speed: 0,
             index: i + 1,
             total: arr.length,
-          })
-        );
-        setFiles((prev) => [entry, ...prev]);
+          });
+          const entry = await uploadOne(file, ({ percent, eta, speed }) =>
+            setProgress({
+              name: file.name,
+              percent,
+              eta,
+              speed,
+              index: i + 1,
+              total: arr.length,
+            })
+          );
+          setFiles((prev) => [entry, ...prev]);
+        }
+      } catch (e) {
+        if (e.message !== "__cancelled__") setError(e.message || "Upload failed");
+      } finally {
+        xhrRef.current = null;
+        setProgress(null);
+        refreshStats();
       }
-    } catch (e) {
-      // Aborting an upload isn't an error worth showing.
-      if (e.message !== "__cancelled__") setError(e.message || "Upload failed");
-    } finally {
-      xhrRef.current = null;
-      setProgress(null);
-      refreshStats();
-    }
-  }, [refreshStats]);
+    },
+    [refreshStats]
+  );
 
   function cancelUpload() {
     cancelledRef.current = true;
     xhrRef.current?.abort();
-    // Tell the server to drop the partial temp file.
     const id = uploadIdRef.current;
     if (id) {
       fetch(`/api/upload?uploadId=${encodeURIComponent(id)}`, {
@@ -696,26 +738,26 @@ export default function Dashboard({
     }
   }
 
-  async function createNewFolder() {
-    const name = newName.trim();
-    if (!name) {
-      setCreating(false);
-      return;
-    }
+  async function createFolderNamed(name) {
+    const clean = (name || "").trim();
+    if (!clean) return;
     try {
       const res = await fetch("/api/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, parentId: currentFolderId }),
+        body: JSON.stringify({ name: clean, parentId: currentFolderId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't create folder");
       setFolders((prev) => [...prev, data.folder]);
-      setNewName("");
-      setCreating(false);
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  function promptNewFolder() {
+    const name = window.prompt("New folder name");
+    if (name != null) createFolderNamed(name);
   }
 
   async function renameFolder(folder) {
@@ -731,9 +773,7 @@ export default function Dashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't rename folder");
-      setFolders((prev) =>
-        prev.map((f) => (f.id === folder.id ? data.folder : f))
-      );
+      setFolders((prev) => prev.map((f) => (f.id === folder.id ? data.folder : f)));
     } catch (e) {
       setError(e.message);
     }
@@ -742,27 +782,18 @@ export default function Dashboard({
   async function deleteFolder(folder) {
     const childFolders = folders.filter((f) => f.parentId === folder.id).length;
     const childFiles = files.filter((f) => f.folderId === folder.id).length;
-    const note =
-      childFolders + childFiles > 0
-        ? " and everything inside it"
-        : "";
-    if (
-      !window.confirm(
-        `Delete “${folder.name}”${note}? This can't be undone.`
-      )
-    ) {
+    const note = childFolders + childFiles > 0 ? " and everything inside it" : "";
+    if (!window.confirm(`Delete “${folder.name}”${note}? This can't be undone.`)) {
       return;
     }
     try {
-      const res = await fetch(
-        `/api/folders?id=${encodeURIComponent(folder.id)}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(`/api/folders?id=${encodeURIComponent(folder.id)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Couldn't delete folder");
       }
-      // Drop the folder, its descendants, and any files they held from view.
       const removed = new Set([folder.id]);
       let added = true;
       while (added) {
@@ -815,6 +846,7 @@ export default function Dashboard({
           )
         );
       }
+      flash("Moved");
     } catch (e) {
       setError(e.message);
     }
@@ -826,7 +858,6 @@ export default function Dashboard({
     router.refresh();
   }
 
-  // Breadcrumb trail from root to the current folder.
   const trail = useMemo(() => {
     const out = [];
     const byId = new Map(folders.map((f) => [f.id, f]));
@@ -841,13 +872,11 @@ export default function Dashboard({
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
 
-  // Live total of everything this app stores, across all folders.
   const filesTotal = useMemo(
     () => files.reduce((sum, f) => sum + (f.size || 0), 0),
     [files]
   );
 
-  // Number of immediate children a folder holds, for its subtitle.
   function childCount(folderId) {
     return (
       folders.filter((f) => f.parentId === folderId).length +
@@ -866,89 +895,254 @@ export default function Dashboard({
     : files.filter((f) => f.folderId === currentFolderId);
 
   const isEmptyHere = visibleFolders.length === 0 && visibleFiles.length === 0;
-  const hasAnything = files.length > 0 || folders.length > 0;
+  const folderGridClass = view === "grid" ? "folder-grid" : "list";
+  const fileGridClass = view === "grid" ? "file-grid" : "list";
 
   return (
-    <div className="container">
-      <div className="topbar">
-        <h1>Your files</h1>
-        <button className="ghost" onClick={logout}>
-          Log out
-        </button>
-      </div>
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">
+            <Icon d={I.cloud} size={20} />
+          </span>
+          <span className="brand-name">My Files</span>
+        </div>
 
-      <div
-        className={`dropzone${dragging ? " drag" : ""}`}
-        onClick={() => {
-          if (!uploading) inputRef.current?.click();
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        {uploading ? (
-          <div className="uploading" onClick={(e) => e.stopPropagation()}>
-            <div className="upload-status">
-              <span className="upload-name">
-                <span className="spinner" aria-hidden="true" />
-                {progress.name}
-              </span>
-              <span className="upload-pct">{progress.percent}%</span>
-            </div>
-            <div className="progress-track">
-              <div
-                className="progress-fill"
-                style={{ width: `${progress.percent}%` }}
-              />
-            </div>
-            <div className="upload-footer">
-              <span className="hint">
-                {[
-                  progress.total > 1
-                    ? `File ${progress.index} of ${progress.total}`
-                    : null,
-                  formatSpeed(progress.speed),
-                  formatEta(progress.eta),
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || "Starting…"}
-              </span>
-              <button className="ghost" onClick={cancelUpload}>
-                Cancel
+        <Dropdown
+          align="left"
+          className="new-menu"
+          trigger={(open, setOpen) => (
+            <button className="new-btn" onClick={() => setOpen(!open)}>
+              <Icon d={I.plus} size={20} />
+              <span>New</span>
+            </button>
+          )}
+        >
+          <MenuItem
+            icon={I.upload}
+            label="File upload"
+            onClick={() => inputRef.current?.click()}
+          />
+          <MenuItem icon={I.folderPlus} label="New folder" onClick={promptNewFolder} />
+        </Dropdown>
+
+        <nav className="nav">
+          <button
+            className={`nav-item${currentFolderId === null ? " active" : ""}`}
+            onClick={() => {
+              setCurrentFolderId(null);
+              setQuery("");
+            }}
+          >
+            <FolderGlyph size={18} />
+            <span>My Files</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-foot">
+          <StorageMeter stats={stats} filesTotal={filesTotal} fileCount={files.length} />
+          <button className="logout" onClick={logout}>
+            <Icon d={I.logout} size={16} />
+            <span>Log out</span>
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        <header className="main-top">
+          <div className="searchbar">
+            <Icon d={I.search} size={18} />
+            <input
+              type="text"
+              placeholder="Search in My Files"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search files"
+            />
+            {query && (
+              <button
+                className="search-clear"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                ×
               </button>
-            </div>
+            )}
           </div>
-        ) : (
-          <>
-            <div>
-              <strong>Drop files here</strong> or click to choose
-            </div>
-            <div className="hint">
-              {currentFolderId
-                ? `Uploads land in “${trail[trail.length - 1]?.name}”.`
-                : "Each file gets a private link only people you share it with can use."}
-            </div>
-          </>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            uploadFiles(e.target.files);
-            e.target.value = "";
+          <div className="view-toggle" role="group" aria-label="View">
+            <button
+              className={`view-btn${view === "list" ? " active" : ""}`}
+              onClick={() => chooseView("list")}
+              title="List view"
+              aria-label="List view"
+            >
+              <Icon d={I.list} />
+            </button>
+            <button
+              className={`view-btn${view === "grid" ? " active" : ""}`}
+              onClick={() => chooseView("grid")}
+              title="Grid view"
+              aria-label="Grid view"
+            >
+              <Icon d={I.grid} />
+            </button>
+          </div>
+        </header>
+
+        <div
+          className={`content${dragging ? " drag" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
           }}
-        />
-      </div>
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setDragging(false);
+          }}
+          onDrop={onDrop}
+        >
+          <div className="content-head">
+            <nav className="crumbs" aria-label="Folder path">
+              <button
+                className="crumb"
+                onClick={() => setCurrentFolderId(null)}
+                disabled={currentFolderId === null && !searching}
+              >
+                My Files
+              </button>
+              {!searching &&
+                trail.map((f) => (
+                  <span key={f.id} className="crumb-wrap">
+                    <span className="crumb-sep">›</span>
+                    <button
+                      className="crumb"
+                      onClick={() => setCurrentFolderId(f.id)}
+                      disabled={f.id === currentFolderId}
+                    >
+                      {f.name}
+                    </button>
+                  </span>
+                ))}
+              {searching && (
+                <span className="crumb-wrap">
+                  <span className="crumb-sep">›</span>
+                  <span className="crumb current">Search results</span>
+                </span>
+              )}
+            </nav>
+          </div>
 
-      <StorageBar stats={stats} filesTotal={filesTotal} fileCount={files.length} />
+          {isEmptyHere ? (
+            <div className="empty">
+              <div className="empty-art">
+                <FolderGlyph size={40} />
+              </div>
+              {searching ? (
+                <p>No files match “{query}”.</p>
+              ) : (
+                <>
+                  <p>{currentFolderId ? "This folder is empty." : "Nothing here yet."}</p>
+                  <p className="empty-sub">
+                    Drag files in, or use the <strong>New</strong> button to upload or
+                    create a folder.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              {visibleFolders.length > 0 && (
+                <section className="block">
+                  <h2 className="section-label">Folders</h2>
+                  <div className={folderGridClass}>
+                    {visibleFolders.map((f) => (
+                      <FolderItem
+                        key={f.id}
+                        folder={f}
+                        view={view}
+                        count={childCount(f.id)}
+                        onOpen={setCurrentFolderId}
+                        onRename={renameFolder}
+                        onMove={setMoveTarget}
+                        onDelete={deleteFolder}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
 
+              {visibleFiles.length > 0 && (
+                <section className="block">
+                  <h2 className="section-label">Files</h2>
+                  <div className={fileGridClass}>
+                    {visibleFiles.map((f) => (
+                      <FileItem
+                        key={f.token}
+                        file={f}
+                        view={view}
+                        onMove={setMoveTarget}
+                        onRename={renameFileEntry}
+                        onDelete={onDeleteFile}
+                        onFlash={flash}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {dragging && (
+            <div className="drop-overlay">
+              <div className="drop-card">
+                <Icon d={I.upload} size={28} />
+                <span>Drop files to upload</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          uploadFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      {uploading && (
+        <div className="upload-toast">
+          <div className="ut-head">
+            <span className="ut-title">
+              <span className="spinner" aria-hidden="true" />
+              Uploading {progress.total > 1 ? `${progress.index}/${progress.total}` : ""}
+            </span>
+            <button className="ut-cancel" onClick={cancelUpload}>
+              Cancel
+            </button>
+          </div>
+          <div className="ut-name" title={progress.name}>
+            {progress.name}
+          </div>
+          <div className="ut-track">
+            <div className="ut-fill" style={{ width: `${progress.percent}%` }} />
+          </div>
+          <div className="ut-foot">
+            <span>{progress.percent}%</span>
+            <span>
+              {[formatSpeed(progress.speed), formatEta(progress.eta)]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {notice && <div className="toast">{notice}</div>}
       {error && <ErrorModal message={error} onClose={() => setError("")} />}
-
       {moveTarget && (
         <MoveModal
           target={moveTarget}
@@ -957,146 +1151,6 @@ export default function Dashboard({
           onChoose={doMove}
         />
       )}
-
-      {hasAnything && (
-        <div className="search">
-          <svg
-            className="search-icon"
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            aria-hidden="true"
-          >
-            <path
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm10 2-4.35-4.35"
-            />
-          </svg>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search all files"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search files"
-          />
-          {query && (
-            <button
-              className="search-clear"
-              onClick={() => setQuery("")}
-              title="Clear"
-              aria-label="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-      )}
-
-      {!searching && (
-        <div className="folder-bar">
-          <nav className="breadcrumbs" aria-label="Folder path">
-            <button
-              className="crumb"
-              onClick={() => setCurrentFolderId(null)}
-              disabled={currentFolderId === null}
-            >
-              Home
-            </button>
-            {trail.map((f) => (
-              <span key={f.id} className="crumb-wrap">
-                <span className="crumb-sep">/</span>
-                <button
-                  className="crumb"
-                  onClick={() => setCurrentFolderId(f.id)}
-                  disabled={f.id === currentFolderId}
-                >
-                  {f.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-          {creating ? (
-            <form
-              className="new-folder"
-              onSubmit={(e) => {
-                e.preventDefault();
-                createNewFolder();
-              }}
-            >
-              <input
-                autoFocus
-                className="new-folder-input"
-                placeholder="Folder name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onBlur={createNewFolder}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setNewName("");
-                    setCreating(false);
-                  }
-                }}
-              />
-            </form>
-          ) : (
-            <button className="ghost new-folder-btn" onClick={() => setCreating(true)}>
-              + New folder
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="file-list">
-        {searching ? (
-          visibleFiles.length === 0 ? (
-            <div className="empty">No files match “{query}”.</div>
-          ) : (
-            visibleFiles.map((f) => (
-              <FileRow
-                key={f.token}
-                file={f}
-                onMove={setMoveTarget}
-                onRename={renameFileEntry}
-                onDelete={onDeleteFile}
-              />
-            ))
-          )
-        ) : isEmptyHere ? (
-          <div className="empty">
-            {currentFolderId
-              ? "This folder is empty. Upload files or create a folder."
-              : "No files yet. Upload something or create a folder."}
-          </div>
-        ) : (
-          <>
-            {visibleFolders.map((f) => (
-              <FolderRow
-                key={f.id}
-                folder={f}
-                count={childCount(f.id)}
-                onOpen={setCurrentFolderId}
-                onRename={renameFolder}
-                onMove={setMoveTarget}
-                onDelete={deleteFolder}
-              />
-            ))}
-            {visibleFiles.map((f) => (
-              <FileRow
-                key={f.token}
-                file={f}
-                onMove={setMoveTarget}
-                onRename={renameFileEntry}
-                onDelete={onDeleteFile}
-              />
-            ))}
-          </>
-        )}
-      </div>
     </div>
   );
 }
