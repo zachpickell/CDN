@@ -421,10 +421,54 @@ function MoveModal({ target, folders, onClose, onChoose }) {
   );
 }
 
-export default function Dashboard({ initialFiles, initialFolders }) {
+// Storage summary: a disk-usage bar for the drive DATA_DIR lives on, plus how
+// much this app's own uploads take up. `filesTotal`/`fileCount` come from live
+// client state so they update the instant a file is added or removed.
+function StorageBar({ stats, filesTotal, fileCount }) {
+  const disk = stats?.disk;
+  const pct =
+    disk && disk.total > 0
+      ? Math.min(100, Math.max(0, (disk.used / disk.total) * 100))
+      : null;
+  return (
+    <div className="storage">
+      <div className="storage-head">
+        <span className="storage-title">Storage</span>
+        <span className="storage-sub">
+          {fileCount === 1 ? "1 file" : `${fileCount} files`} ·{" "}
+          {formatSize(filesTotal)}
+        </span>
+      </div>
+      {disk ? (
+        <>
+          <div className="storage-track">
+            <div className="storage-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="storage-foot">
+            <span>
+              {formatSize(disk.used)} used of {formatSize(disk.total)}
+            </span>
+            <span className="storage-free">{formatSize(disk.free)} free</span>
+          </div>
+        </>
+      ) : (
+        <div className="storage-foot">
+          <span>{formatSize(filesTotal)} used by your files</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Dashboard({
+  initialFiles,
+  initialFolders,
+  initialStats,
+}) {
   const router = useRouter();
   const [files, setFiles] = useState(initialFiles);
   const [folders, setFolders] = useState(initialFolders || []);
+  const [stats, setStats] = useState(initialStats || null);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -443,6 +487,16 @@ export default function Dashboard({ initialFiles, initialFolders }) {
   useEffect(() => {
     folderRef.current = currentFolderId;
   }, [currentFolderId]);
+
+  // Pull fresh disk usage from the server (after uploads/deletes change it).
+  const refreshStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/storage");
+      if (res.ok) setStats(await res.json());
+    } catch {
+      // Non-critical; leave the last known stats in place.
+    }
+  }, []);
 
   const uploading = progress !== null;
 
@@ -590,8 +644,9 @@ export default function Dashboard({ initialFiles, initialFolders }) {
     } finally {
       xhrRef.current = null;
       setProgress(null);
+      refreshStats();
     }
-  }, []);
+  }, [refreshStats]);
 
   function cancelUpload() {
     cancelledRef.current = true;
@@ -617,6 +672,7 @@ export default function Dashboard({ initialFiles, initialFolders }) {
     await fetch(`/api/files?token=${encodeURIComponent(token)}`, {
       method: "DELETE",
     });
+    refreshStats();
   }
 
   async function renameFileEntry(file) {
@@ -721,6 +777,7 @@ export default function Dashboard({ initialFiles, initialFolders }) {
       setFolders((prev) => prev.filter((f) => !removed.has(f.id)));
       setFiles((prev) => prev.filter((f) => !removed.has(f.folderId)));
       if (removed.has(currentFolderId)) setCurrentFolderId(folder.parentId);
+      refreshStats();
     } catch (e) {
       setError(e.message);
     }
@@ -783,6 +840,12 @@ export default function Dashboard({ initialFiles, initialFolders }) {
 
   const q = query.trim().toLowerCase();
   const searching = q.length > 0;
+
+  // Live total of everything this app stores, across all folders.
+  const filesTotal = useMemo(
+    () => files.reduce((sum, f) => sum + (f.size || 0), 0),
+    [files]
+  );
 
   // Number of immediate children a folder holds, for its subtitle.
   function childCount(folderId) {
@@ -881,6 +944,8 @@ export default function Dashboard({ initialFiles, initialFolders }) {
           }}
         />
       </div>
+
+      <StorageBar stats={stats} filesTotal={filesTotal} fileCount={files.length} />
 
       {error && <ErrorModal message={error} onClose={() => setError("")} />}
 

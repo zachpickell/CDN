@@ -552,6 +552,65 @@ button.ghost:hover {
   margin: 0 0 12px;
 }
 
+/* --- Storage usage --------------------------------------------------------- */
+
+.storage {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.storage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storage-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.storage-sub {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.storage-track {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.storage-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.storage-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.storage-free {
+  color: var(--ok);
+}
+
 /* --- Folders --------------------------------------------------------------- */
 
 .file-icon.kind-folder {

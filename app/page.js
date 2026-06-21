@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { listAll } from "@/lib/store";
+import { listAll, storageStats } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 import Dashboard from "./dashboard";
 
@@ -27,7 +27,12 @@ export default async function Home() {
     parentId: f.parentId,
     createdAt: f.createdAt,
   }));
+  const initialStats = await storageStats();
   return (
-    <Dashboard initialFiles={initialFiles} initialFolders={initialFolders} />
+    <Dashboard
+      initialFiles={initialFiles}
+      initialFolders={initialFolders}
+      initialStats={initialStats}
+    />
   );
 }
