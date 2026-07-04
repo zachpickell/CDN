@@ -88,6 +88,7 @@ const I = {
   move: "M3 7V5a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v2M3 7h18M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9M12 11v6m0 0 2.5-2.5M12 17l-2.5-2.5",
   trash: "M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3",
   logout: "M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
+  refresh: "M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6",
   cloud: "M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 0 1 18 17H7Z",
 };
 
@@ -557,6 +558,26 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
     } catch {}
   }, []);
 
+  // Re-pull files and folders from the server. Folder ids are real paths now,
+  // so renames/moves change descendant ids — and files added directly on the
+  // mounted drive only appear after a rescan. This covers both.
+  const refreshAll = useCallback(async () => {
+    try {
+      const [fr, dr] = await Promise.all([
+        fetch("/api/files"),
+        fetch("/api/folders"),
+      ]);
+      if (fr.ok) setFiles((await fr.json()).files);
+      if (dr.ok) {
+        const fl = (await dr.json()).folders;
+        setFolders(fl);
+        const cur = folderRef.current;
+        if (cur && !fl.some((f) => f.id === cur)) setCurrentFolderId(null);
+      }
+    } catch {}
+    refreshStats();
+  }, [refreshStats]);
+
   const uploading = progress !== null;
 
   const MAX_CHUNK = 4 * 1024 * 1024;
@@ -781,7 +802,7 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't rename folder");
-      setFolders((prev) => prev.map((f) => (f.id === folder.id ? data.folder : f)));
+      await refreshAll();
     } catch (e) {
       setError(e.message);
     }
@@ -848,11 +869,7 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Couldn't move folder");
-        setFolders((prev) =>
-          prev.map((f) =>
-            f.id === target.id ? { ...f, parentId: destFolderId } : f
-          )
-        );
+        await refreshAll();
       }
       flash("Moved");
     } catch (e) {
@@ -976,6 +993,19 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
                 ×
               </button>
             )}
+          </div>
+          <div className="view-toggle" role="group" aria-label="Refresh">
+            <button
+              className="view-btn"
+              onClick={() => {
+                refreshAll();
+                flash("Refreshed");
+              }}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              <Icon d={I.refresh} />
+            </button>
           </div>
           <div className="view-toggle" role="group" aria-label="View">
             <button
