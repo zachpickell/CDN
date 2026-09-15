@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { listAll, storageStats } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 import Dashboard from "./dashboard";
-import AskPanel from "./ask";
 
 export const dynamic = "force-dynamic";
 
@@ -30,13 +29,10 @@ export default async function Home() {
   }));
   const initialStats = await storageStats();
   return (
-    <>
-      <Dashboard
-        initialFiles={initialFiles}
-        initialFolders={initialFolders}
-        initialStats={initialStats}
-      />
-      <AskPanel />
-    </>
+    <Dashboard
+      initialFiles={initialFiles}
+      initialFolders={initialFolders}
+      initialStats={initialStats}
+    />
   );
 }
