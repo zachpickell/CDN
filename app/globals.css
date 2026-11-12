@@ -1,12 +1,14 @@
 :root {
-  --bg: #0e1712;
-  --panel: #14201a;
-  --panel-2: #1c2b23;
-  --border: #2c4034;
-  --text: #e8f5d8;
-  --muted: #8fa596;
-  --accent: #7bb33f;
-  --accent-hover: #a6d56b;
+  /* Cool teal scheme pulled from app/icon.svg (#2dd4bf on white). */
+  --bg: #0a1413;
+  --panel: #10201e;
+  --panel-2: #16302c;
+  --border: #244a43;
+  --text: #e6f5f0;
+  --muted: #88a9a1;
+  --accent: #2dd4bf;
+  --accent-hover: #27bbaa;
+  --accent-ink: #052521; /* dark text/icon color for use on the accent fill */
   --danger: #ff6b6b;
   --ok: #3ecf8e;
 }
@@ -98,12 +100,12 @@ button {
   font-weight: 600;
   padding: 11px 16px;
   background: var(--accent);
-  color: white;
+  color: var(--accent-ink);
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
 button:hover {
-  background: #6a9e35;
+  background: var(--accent-hover);
 }
 
 button:disabled {
@@ -118,7 +120,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  background: #232a38;
+  background: #1c3b36;
 }
 
 .error {
@@ -142,7 +144,9 @@ button.secondary:hover {
 .sidebar {
   width: 260px;
   flex-shrink: 0;
-  background: var(--panel);
+  /* Subtle top-to-bottom cool gradient gives the sidebar quiet depth against
+     the flat canvas, without a heavy shadow on every surface. */
+  background: linear-gradient(180deg, #122420, #0d1a18);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -160,9 +164,19 @@ button.secondary:hover {
   padding: 4px 8px;
 }
 
+/* Brand chip: the one deliberate gradient, as the sidebar's identity focal
+   point. Teal matches app/icon.svg; ink keeps the glyph readable on the fill. */
 .brand-mark {
-  color: var(--accent);
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, #2dd4bf, #15a493);
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(45, 212, 191, 0.25);
 }
 
 .brand-name {
@@ -186,7 +200,7 @@ button.secondary:hover {
 }
 
 .new-btn:hover {
-  background: #232a38;
+  background: #1c3b36;
 }
 
 .new-btn svg {
@@ -220,7 +234,7 @@ button.secondary:hover {
 }
 
 .nav-item.active {
-  background: rgba(123, 179, 63, 0.16);
+  background: rgba(45, 212, 191, 0.14);
   color: var(--text);
 }
 
@@ -308,6 +322,8 @@ button.secondary:hover {
   align-items: center;
   gap: 14px;
   padding: 16px 24px;
+  /* Separates the controls row from the canvas below it. */
+  border-bottom: 1px solid var(--border);
 }
 
 .searchbar {
@@ -562,7 +578,7 @@ img.glyph {
 }
 
 .card-file:hover {
-  border-color: #4a6b33;
+  border-color: #2f6b61;
   background: var(--panel-2);
 }
 
@@ -1102,7 +1118,7 @@ img.glyph {
 }
 
 .citem:hover {
-  border-color: #4a6b33;
+  border-color: #2f6b61;
 }
 
 /* While grabbed, the item lifts (shadow + accent border) and drops the
