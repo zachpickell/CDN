@@ -1,5 +1,6 @@
 :root {
-  /* Cool teal scheme pulled from app/icon.svg (#2dd4bf on white). */
+  /* Cool teal scheme pulled from app/icon.svg (#2dd4bf on white). Teal accent
+     is shared by both themes; only the neutrals flip. */
   --bg: #0a1413;
   --panel: #10201e;
   --panel-2: #16302c;
@@ -9,8 +10,27 @@
   --accent: #2dd4bf;
   --accent-hover: #27bbaa;
   --accent-ink: #052521; /* dark text/icon color for use on the accent fill */
+  --link: #2dd4bf; /* accent-as-text; darkened in light mode for contrast */
+  --hover: #1c3b36; /* hover fill for secondary/new buttons */
+  --sidebar-bg: linear-gradient(180deg, #122420, #0d1a18);
+  --toast-bg: #11151d;
   --danger: #ff6b6b;
   --ok: #3ecf8e;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f4f7f6;
+  --panel: #ffffff;
+  --panel-2: #eef3f1;
+  --border: #d4e0db;
+  --text: #0e1a17;
+  --muted: #566b65;
+  --link: #0f766e; /* darker teal so links clear 4.5:1 on light surfaces */
+  --hover: #e2ebe8;
+  --sidebar-bg: linear-gradient(180deg, #ffffff, #eef4f2);
+  --toast-bg: #ffffff;
+  color-scheme: light;
 }
 
 * {
@@ -29,7 +49,7 @@ body {
 }
 
 a {
-  color: var(--accent);
+  color: var(--link);
 }
 
 .container {
@@ -120,7 +140,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-  background: #1c3b36;
+  background: var(--hover);
 }
 
 .error {
@@ -144,9 +164,9 @@ button.secondary:hover {
 .sidebar {
   width: 260px;
   flex-shrink: 0;
-  /* Subtle top-to-bottom cool gradient gives the sidebar quiet depth against
-     the flat canvas, without a heavy shadow on every surface. */
-  background: linear-gradient(180deg, #122420, #0d1a18);
+  /* Subtle top-to-bottom gradient gives the sidebar quiet depth against the
+     flat canvas, without a heavy shadow on every surface. */
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -200,7 +220,7 @@ button.secondary:hover {
 }
 
 .new-btn:hover {
-  background: #1c3b36;
+  background: var(--hover);
 }
 
 .new-btn svg {
@@ -946,7 +966,7 @@ img.glyph {
   left: 50%;
   bottom: 28px;
   transform: translateX(-50%);
-  background: #11151d;
+  background: var(--toast-bg);
   color: var(--text);
   border: 1px solid var(--border);
   padding: 10px 18px;

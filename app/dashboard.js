@@ -91,6 +91,8 @@ const I = {
   refresh: "M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6",
   cloud: "M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 0 1 18 17H7Z",
   grip: "M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
 };
 
 /* ----------------------------- share links ------------------------------ */
@@ -743,6 +745,7 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState("canvas");
+  const [theme, setTheme] = useState("dark");
   const [isMobile, setIsMobile] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
@@ -769,6 +772,20 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
       else if (v === "canvas" || v === "grid") setView("canvas");
     } catch {}
   }, []);
+
+  // Sync local state to the theme the init script already set on <html>.
+  useEffect(() => {
+    setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem("cdn_theme", next);
+    } catch {}
+    setTheme(next);
+  };
 
   // Free-drag needs a mouse and room; below 820px (or on touch) fall back to
   // the tidy flow grid, which matches the responsive sidebar breakpoint.
@@ -1325,6 +1342,16 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
               aria-label="Refresh"
             >
               <Icon d={I.refresh} />
+            </button>
+          </div>
+          <div className="view-toggle" role="group" aria-label="Theme">
+            <button
+              className="view-btn"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              <Icon d={theme === "dark" ? I.sun : I.moon} />
             </button>
           </div>
           <div className="view-toggle" role="group" aria-label="View">
