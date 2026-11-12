@@ -47,6 +47,8 @@ export async function POST(request) {
         size: entry.size,
         folderId: entry.folderId ?? null,
         uploadedAt: entry.uploadedAt,
+        x: null,
+        y: null,
       });
     }
 

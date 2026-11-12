@@ -5,13 +5,21 @@ import {
   renameFolder,
   moveFolder,
   deleteFolder,
+  setFolderPosition,
 } from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 
 export const runtime = "nodejs";
 
 function publicFolder(f) {
-  return { id: f.id, name: f.name, parentId: f.parentId, createdAt: f.createdAt };
+  return {
+    id: f.id,
+    name: f.name,
+    parentId: f.parentId,
+    createdAt: f.createdAt,
+    x: f.x ?? null,
+    y: f.y ?? null,
+  };
 }
 
 export async function GET() {
@@ -67,6 +75,12 @@ export async function PATCH(request) {
     }
     if (body.parentId !== undefined) {
       folder = await moveFolder(body.id, body.parentId);
+      if (!folder) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
+    if (typeof body.x === "number" && typeof body.y === "number") {
+      folder = await setFolderPosition(body.id, body.x, body.y);
       if (!folder) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }

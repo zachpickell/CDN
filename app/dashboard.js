@@ -90,7 +90,29 @@ const I = {
   logout: "M16 17l5-5-5-5M21 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
   refresh: "M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6",
   cloud: "M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 0 1 18 17H7Z",
+  grip: "M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01",
 };
+
+/* ----------------------------- share links ------------------------------ */
+
+function openShare(token) {
+  window.open(`/f/${token}`, "_blank", "noopener,noreferrer");
+}
+
+async function copyShareLink(token, onFlash) {
+  const url = `${window.location.origin}/f/${token}`;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    const el = document.createElement("textarea");
+    el.value = url;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+  }
+  onFlash("Link copied");
+}
 
 function Icon({ d, size = 18, fill = false }) {
   return (
@@ -268,22 +290,8 @@ function folderActions(folder, { onOpen, onRename, onMove, onDelete }) {
 }
 
 function FileItem({ file, view, onMove, onRename, onDelete, onFlash }) {
-  const relPath = `/f/${file.token}`;
-  const open = () => window.open(relPath, "_blank", "noopener,noreferrer");
-  const copy = async () => {
-    const url = `${window.location.origin}${relPath}`;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      const el = document.createElement("textarea");
-      el.value = url;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-    }
-    onFlash("Link copied");
-  };
+  const open = () => openShare(file.token);
+  const copy = () => copyShareLink(file.token, onFlash);
   const actions = fileActions(file, { copy, open, onRename, onMove, onDelete });
 
   if (view === "grid") {
@@ -352,6 +360,228 @@ function FolderItem({ folder, view, count, onOpen, onRename, onMove, onDelete })
         <div className="row-sub">{count === 1 ? "1 item" : `${count} items`}</div>
       </div>
       <ItemMenu actions={actions} />
+    </div>
+  );
+}
+
+/* -------------------------------- canvas -------------------------------- */
+// Free-placement surface: every item sits at an absolute (x, y) the user sets
+// by dragging. Items without a saved position flow into a grid below the
+// placed ones, so new uploads land somewhere sensible until they're arranged.
+
+const CV = { W: 190, H: 170, GAP: 18, PAD: 4, STEP: 24 };
+
+function computeLayout(items, width) {
+  const cols = Math.max(1, Math.floor((width - CV.PAD) / (CV.W + CV.GAP)));
+  const map = {};
+  let placedBottom = 0;
+  for (const it of items) {
+    if (Number.isFinite(it.x) && Number.isFinite(it.y)) {
+      map[it.key] = { x: it.x, y: it.y };
+      placedBottom = Math.max(placedBottom, it.y + CV.H + CV.GAP);
+    }
+  }
+  let i = 0;
+  for (const it of items) {
+    if (map[it.key]) continue;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    map[it.key] = {
+      x: CV.PAD + col * (CV.W + CV.GAP),
+      y: placedBottom + row * (CV.H + CV.GAP),
+    };
+    i++;
+  }
+  return map;
+}
+
+function CanvasItem({ item, pos, active, actions, onPointerDown, onGripKeyDown }) {
+  const isFile = item.kind === "file";
+  return (
+    <div
+      className={`citem${active ? " citem-active" : ""}`}
+      style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: CV.W }}
+      onPointerDown={(e) => onPointerDown(e, item, pos)}
+    >
+      <div className="citem-top">
+        <button
+          type="button"
+          className="grip"
+          aria-label={`Move ${item.name}. Press Enter to pick up, then arrow keys to move, Enter to drop, Escape to cancel.`}
+          onKeyDown={(e) => onGripKeyDown(e, item, pos)}
+        >
+          <Icon d={I.grip} size={16} />
+        </button>
+        <div className="citem-name" title={item.name}>
+          {item.name}
+        </div>
+        <ItemMenu actions={actions} />
+      </div>
+      <div className="citem-body">
+        {isFile ? (
+          <Thumb file={item.raw} big />
+        ) : (
+          <span className="citem-folder-glyph">
+            <FolderGlyph size={44} />
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Canvas({ items, onReposition, buildActions }) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(1000);
+  const [drag, setDrag] = useState(null); // pointer drag: { key, x, y }
+  const [grabbed, setGrabbed] = useState(null); // keyboard move: { key, x, y }
+  const [live, setLive] = useState("");
+  const info = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const layout = useMemo(() => computeLayout(items, width), [items, width]);
+
+  const posOf = (item) => {
+    if (drag && drag.key === item.key) return { x: drag.x, y: drag.y };
+    if (grabbed && grabbed.key === item.key) return { x: grabbed.x, y: grabbed.y };
+    return layout[item.key] || { x: 0, y: 0 };
+  };
+
+  const maxX = () => Math.max(0, (ref.current?.clientWidth || width) - CV.W);
+
+  const onMove = useCallback((e) => {
+    const d = info.current;
+    if (!d) return;
+    const rect = ref.current.getBoundingClientRect();
+    if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > 5) {
+      d.moved = true;
+    }
+    const lim = Math.max(0, ref.current.clientWidth - CV.W);
+    const x = Math.max(0, Math.min(lim, e.clientX - rect.left - d.offsetX));
+    const y = Math.max(0, e.clientY - rect.top - d.offsetY);
+    d.curX = x;
+    d.curY = y;
+    setDrag({ key: d.key, x, y });
+  }, [width]);
+
+  const onUp = useCallback(() => {
+    const d = info.current;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    info.current = null;
+    setDrag(null);
+    if (!d) return;
+    if (d.moved) {
+      onReposition(d.item, d.curX, d.curY);
+    } else {
+      d.item.onOpen();
+    }
+  }, [onMove, onReposition]);
+
+  const onPointerDown = (e, item, pos) => {
+    if (e.button != null && e.button !== 0) return;
+    // Let the kebab menu and any link handle their own clicks.
+    if (e.target.closest(".menu-wrap, a[href]")) return;
+    const rect = ref.current.getBoundingClientRect();
+    info.current = {
+      key: item.key,
+      item,
+      offsetX: e.clientX - rect.left - pos.x,
+      offsetY: e.clientY - rect.top - pos.y,
+      startX: e.clientX,
+      startY: e.clientY,
+      curX: pos.x,
+      curY: pos.y,
+      moved: false,
+    };
+    setGrabbed(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  useEffect(
+    () => () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    },
+    [onMove, onUp]
+  );
+
+  const onGripKeyDown = (e, item, pos) => {
+    const isGrabbed = grabbed && grabbed.key === item.key;
+    if (!isGrabbed) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setGrabbed({ key: item.key, x: pos.x, y: pos.y });
+        setLive(`Picked up ${item.name}. Use arrow keys to move.`);
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setGrabbed(null);
+      setLive(`Cancelled moving ${item.name}.`);
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onReposition(item, grabbed.x, grabbed.y);
+      setGrabbed(null);
+      setLive(`Dropped ${item.name}.`);
+      return;
+    }
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    setGrabbed((g) => {
+      if (!g) return g;
+      return {
+        key: g.key,
+        x: Math.max(0, Math.min(maxX(), g.x + d[0] * CV.STEP)),
+        y: Math.max(0, g.y + d[1] * CV.STEP),
+      };
+    });
+  };
+
+  const height = useMemo(() => {
+    let bottom = 0;
+    for (const item of items) {
+      const p = layout[item.key];
+      if (p) bottom = Math.max(bottom, p.y + CV.H);
+    }
+    return bottom + CV.H;
+  }, [items, layout]);
+
+  return (
+    <div className="canvas" ref={ref} style={{ minHeight: height }}>
+      {items.map((item) => {
+        const pos = posOf(item);
+        const active =
+          (drag && drag.key === item.key) || (grabbed && grabbed.key === item.key);
+        return (
+          <CanvasItem
+            key={item.key}
+            item={item}
+            pos={pos}
+            active={!!active}
+            actions={buildActions(item)}
+            onPointerDown={onPointerDown}
+            onGripKeyDown={onGripKeyDown}
+          />
+        );
+      })}
+      <div className="sr-only" aria-live="polite">
+        {live}
+      </div>
     </div>
   );
 }
@@ -512,7 +742,8 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
   const [stats, setStats] = useState(initialStats || null);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState("grid");
+  const [view, setView] = useState("canvas");
+  const [isMobile, setIsMobile] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -530,12 +761,23 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
     folderRef.current = currentFolderId;
   }, [currentFolderId]);
 
-  // Restore the saved grid/list preference.
+  // Restore the saved canvas/list preference ("grid" is the old name for canvas).
   useEffect(() => {
     try {
       const v = localStorage.getItem("cdn_view");
-      if (v === "grid" || v === "list") setView(v);
+      if (v === "list") setView("list");
+      else if (v === "canvas" || v === "grid") setView("canvas");
     } catch {}
+  }, []);
+
+  // Free-drag needs a mouse and room; below 820px (or on touch) fall back to
+  // the tidy flow grid, which matches the responsive sidebar breakpoint.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 820px), (pointer: coarse)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
   }, []);
 
   const chooseView = (v) => {
@@ -877,6 +1119,35 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
     }
   }
 
+  // Save a dragged item's new canvas position (optimistic).
+  const reposition = useCallback(async (item, x, y) => {
+    const url = item.kind === "file" ? "/api/files" : "/api/folders";
+    const body =
+      item.kind === "file" ? { token: item.id, x, y } : { id: item.id, x, y };
+    if (item.kind === "file") {
+      setFiles((prev) =>
+        prev.map((f) => (f.token === item.id ? { ...f, x, y } : f))
+      );
+    } else {
+      setFolders((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, x, y } : f))
+      );
+    }
+    try {
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't save position");
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
     router.replace("/login");
@@ -920,8 +1191,57 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
     : files.filter((f) => f.folderId === currentFolderId);
 
   const isEmptyHere = visibleFolders.length === 0 && visibleFiles.length === 0;
-  const folderGridClass = view === "grid" ? "folder-grid" : "list";
-  const fileGridClass = view === "grid" ? "file-grid" : "list";
+  // Canvas needs a mouse and room, and positions only make sense inside a
+  // single folder, so search results use the grid regardless.
+  const showCanvas = view === "canvas" && !isMobile && !searching;
+  const gridMode = view === "canvas"; // grid when canvas isn't usable; list otherwise
+  const folderGridClass = gridMode ? "folder-grid" : "list";
+  const fileGridClass = gridMode ? "file-grid" : "list";
+
+  // Folders and files share one canvas surface, folders first.
+  const canvasItems = useMemo(() => {
+    const folderItems = visibleFolders.map((f) => ({
+      kind: "folder",
+      key: `d:${f.id}`,
+      id: f.id,
+      name: f.name,
+      x: f.x,
+      y: f.y,
+      raw: f,
+      onOpen: () => setCurrentFolderId(f.id),
+    }));
+    const fileItems = visibleFiles.map((f) => ({
+      kind: "file",
+      key: `f:${f.token}`,
+      id: f.token,
+      name: f.name,
+      x: f.x,
+      y: f.y,
+      raw: f,
+      onOpen: () => openShare(f.token),
+    }));
+    return [...folderItems, ...fileItems];
+  }, [visibleFolders, visibleFiles]);
+
+  // Plain function (not memoized) so it always closes over fresh state in the
+  // folder/file handlers it delegates to.
+  const buildActions = (item) => {
+    if (item.kind === "folder") {
+      return folderActions(item.raw, {
+        onOpen: setCurrentFolderId,
+        onRename: renameFolder,
+        onMove: setMoveTarget,
+        onDelete: deleteFolder,
+      });
+    }
+    return fileActions(item.raw, {
+      copy: () => copyShareLink(item.id, flash),
+      open: () => openShare(item.id),
+      onRename: renameFileEntry,
+      onMove: setMoveTarget,
+      onDelete: onDeleteFile,
+    });
+  };
 
   return (
     <div className="app">
@@ -1017,10 +1337,10 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
               <Icon d={I.list} />
             </button>
             <button
-              className={`view-btn${view === "grid" ? " active" : ""}`}
-              onClick={() => chooseView("grid")}
-              title="Grid view"
-              aria-label="Grid view"
+              className={`view-btn${view === "canvas" ? " active" : ""}`}
+              onClick={() => chooseView("canvas")}
+              title={isMobile ? "Canvas view (needs a larger screen to drag)" : "Canvas view"}
+              aria-label="Canvas view"
             >
               <Icon d={I.grid} />
             </button>
@@ -1067,6 +1387,9 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
                 </span>
               )}
             </nav>
+            {showCanvas && !isEmptyHere && (
+              <p className="canvas-hint">Drag anything to arrange it. Your layout is saved.</p>
+            )}
           </div>
 
           {isEmptyHere ? (
@@ -1086,6 +1409,12 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
                 </>
               )}
             </div>
+          ) : showCanvas ? (
+            <Canvas
+              items={canvasItems}
+              onReposition={reposition}
+              buildActions={buildActions}
+            />
           ) : (
             <>
               {visibleFolders.length > 0 && (
@@ -1096,7 +1425,7 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
                       <FolderItem
                         key={f.id}
                         folder={f}
-                        view={view}
+                        view={gridMode ? "grid" : "list"}
                         count={childCount(f.id)}
                         onOpen={setCurrentFolderId}
                         onRename={renameFolder}
@@ -1116,7 +1445,7 @@ export default function Dashboard({ initialFiles, initialFolders, initialStats }
                       <FileItem
                         key={f.token}
                         file={f}
-                        view={view}
+                        view={gridMode ? "grid" : "list"}
                         onMove={setMoveTarget}
                         onRename={renameFileEntry}
                         onDelete={onDeleteFile}

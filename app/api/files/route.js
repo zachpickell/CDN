@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { listFiles, deleteFile, moveFile, renameFile } from "@/lib/store";
+import {
+  listFiles,
+  deleteFile,
+  moveFile,
+  renameFile,
+  setFilePosition,
+} from "@/lib/store";
 import { isAuthed } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -16,6 +22,8 @@ export async function GET() {
       size: f.size,
       folderId: f.folderId ?? null,
       uploadedAt: f.uploadedAt,
+      x: f.x ?? null,
+      y: f.y ?? null,
     })),
   });
 }
@@ -48,6 +56,12 @@ export async function PATCH(request) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
     }
+    if (typeof body.x === "number" && typeof body.y === "number") {
+      entry = await setFilePosition(body.token, body.x, body.y);
+      if (!entry) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    }
     if (!entry) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
@@ -58,6 +72,8 @@ export async function PATCH(request) {
         size: entry.size,
         folderId: entry.folderId ?? null,
         uploadedAt: entry.uploadedAt,
+        x: entry.x ?? null,
+        y: entry.y ?? null,
       },
     });
   } catch (err) {

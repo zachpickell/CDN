@@ -20,12 +20,16 @@ export default async function Home() {
     size: f.size,
     folderId: f.folderId ?? null,
     uploadedAt: f.uploadedAt,
+    x: f.x ?? null,
+    y: f.y ?? null,
   }));
   const initialFolders = folders.map((f) => ({
     id: f.id,
     name: f.name,
     parentId: f.parentId,
     createdAt: f.createdAt,
+    x: f.x ?? null,
+    y: f.y ?? null,
   }));
   const initialStats = await storageStats();
   return (
